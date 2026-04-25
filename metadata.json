@@ -1,0 +1,6 @@
+{
+  "name": "YouFi",
+  "description": "Your personal AI financial co-pilot.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": []
+}
