@@ -1,0 +1,184 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isAdmin() {
+      // no admin concept for now
+      return false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- User Validation ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'createdAt']) &&
+             data.email is string && data.email.size() > 0 && data.email.size() <= 100 &&
+             data.createdAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isVerified() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if isVerified() && existing().userId == request.auth.uid; // although users collections shouldn't be listed unless by admin
+      allow create: if isVerified() && isValidId(userId) && request.auth.uid == userId &&
+                    isValidUser(incoming()) && incoming().createdAt == request.time;
+      allow update: if isVerified() && isValidId(userId) && request.auth.uid == userId &&
+                    isValidUser(incoming()) &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().email == existing().email &&
+                    // Just simple profile updates
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'income', 'currency']);
+      allow delete: if false; // soft delete or no delete
+    }
+
+    // --- Transaction Validation ---
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['userId', 'type', 'amount', 'category', 'date', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.type is string && (data.type == 'income' || data.type == 'expense' || data.type == 'debt') &&
+             data.amount is number &&
+             data.category is string && data.category.size() <= 100 &&
+             data.date is string && data.date.size() <= 100 &&
+             data.createdAt is timestamp;
+    }
+
+    match /transactions/{transactionId} {
+      allow get: if isVerified() && isValidId(transactionId) && existing().userId == request.auth.uid;
+      allow list: if isVerified() && existing().userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(transactionId) &&
+                    isValidTransaction(incoming()) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().createdAt == request.time &&
+                    exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isVerified() && isValidId(transactionId) && existing().userId == request.auth.uid &&
+                    isValidTransaction(incoming()) &&
+                    incoming().userId == existing().userId &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['type', 'amount', 'category', 'note', 'date']);
+      allow delete: if isVerified() && isValidId(transactionId) && existing().userId == request.auth.uid;
+    }
+
+    // --- Budget Validation ---
+    function isValidBudget(data) {
+      return data.keys().hasAll(['userId', 'month', 'categories', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.month is string && data.month.size() > 0 && data.month.size() <= 20 &&
+             data.categories is map &&
+             data.createdAt is timestamp;
+    }
+
+    match /budgets/{budgetId} {
+      allow get: if isVerified() && isValidId(budgetId) && existing().userId == request.auth.uid;
+      allow list: if isVerified() && existing().userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(budgetId) &&
+                    isValidBudget(incoming()) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().createdAt == request.time &&
+                    exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isVerified() && isValidId(budgetId) && existing().userId == request.auth.uid &&
+                    isValidBudget(incoming()) &&
+                    incoming().userId == existing().userId &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['month', 'categories']);
+      allow delete: if isVerified() && isValidId(budgetId) && existing().userId == request.auth.uid;
+    }
+
+    // --- Savings Goal Validation ---
+    function isValidSavingsGoal(data) {
+      return data.keys().hasAll(['userId', 'title', 'targetAmount', 'savedAmount', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.targetAmount is number &&
+             data.savedAmount is number &&
+             data.createdAt is timestamp;
+    }
+
+    match /savingsGoals/{goalId} {
+      allow get: if isVerified() && isValidId(goalId) && existing().userId == request.auth.uid;
+      allow list: if isVerified() && existing().userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(goalId) &&
+                    isValidSavingsGoal(incoming()) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().createdAt == request.time &&
+                    exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isVerified() && isValidId(goalId) && existing().userId == request.auth.uid &&
+                    isValidSavingsGoal(incoming()) &&
+                    incoming().userId == existing().userId &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['title', 'targetAmount', 'savedAmount', 'deadline', 'emoji', 'frequency', 'milestones']);
+      allow delete: if isVerified() && isValidId(goalId) && existing().userId == request.auth.uid;
+    }
+
+    // --- Financial Plan Validation ---
+    function isValidFinancialPlan(data) {
+      return data.keys().hasAll(['userId', 'title', 'description', 'status', 'progress', 'tasks', 'completedTasks', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.description is string && data.description.size() > 0 && data.description.size() <= 10000 &&
+             data.status is string && (data.status == 'active' || data.status == 'learning' || data.status == 'completed') &&
+             data.progress is number &&
+             data.tasks is number &&
+             data.completedTasks is number &&
+             data.createdAt is timestamp;
+    }
+
+    match /financialPlans/{planId} {
+      allow get: if isVerified() && isValidId(planId) && existing().userId == request.auth.uid;
+      allow list: if isVerified() && existing().userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(planId) &&
+                    isValidFinancialPlan(incoming()) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().createdAt == request.time &&
+                    exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isVerified() && isValidId(planId) && existing().userId == request.auth.uid &&
+                    isValidFinancialPlan(incoming()) &&
+                    incoming().userId == existing().userId &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'status', 'progress', 'tasks', 'completedTasks', 'planData']);
+      allow delete: if isVerified() && isValidId(planId) && existing().userId == request.auth.uid;
+    }
+
+    // --- AI Insight Validation ---
+    function isValidAIInsight(data) {
+      return data.keys().hasAll(['userId', 'message', 'type', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.message is string && data.message.size() > 0 && data.message.size() <= 10000 &&
+             data.type is string && (data.type == 'warning' || data.type == 'advice' || data.type == 'prediction' || data.type == 'strategy') &&
+             data.createdAt is timestamp;
+    }
+
+    match /aiInsights/{insightId} {
+      allow get: if isVerified() && isValidId(insightId) && existing().userId == request.auth.uid;
+      allow list: if isVerified() && existing().userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(insightId) &&
+                    isValidAIInsight(incoming()) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().createdAt == request.time &&
+                    exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      // Insights are generally immutable output from the AI
+      allow update: if false; 
+      allow delete: if isVerified() && isValidId(insightId) && existing().userId == request.auth.uid;
+    }
+  }
+}
