@@ -43,12 +43,16 @@ export default function Goals() {
     if (timeDiff <= 0) return [];
 
     let numPeriods = 1;
+    let periodMs = 1000 * 3600 * 24;
     if (freq === 'monthly') {
         numPeriods = Math.ceil(timeDiff / (1000 * 3600 * 24 * 30));
+        periodMs = 1000 * 3600 * 24 * 30;
     } else if (freq === 'weekly') {
         numPeriods = Math.ceil(timeDiff / (1000 * 3600 * 24 * 7));
+        periodMs = 1000 * 3600 * 24 * 7;
     } else if (freq === 'daily') {
         numPeriods = Math.ceil(timeDiff / (1000 * 3600 * 24));
+        periodMs = 1000 * 3600 * 24;
     }
     
     if (numPeriods <= 0) numPeriods = 1;
@@ -56,10 +60,15 @@ export default function Goals() {
 
     const amountPerPeriod = target / numPeriods;
     for (let i = 1; i <= numPeriods; i++) {
+        const milestoneDate = new Date(now.getTime() + periodMs * i);
+        const isLast = i === numPeriods;
+        const displayDate = isLast ? deadline : milestoneDate;
+
         milestones.push({
              id: Math.random().toString(36).substring(7),
              title: `${freq === 'monthly' ? 'Month' : freq === 'weekly' ? 'Week' : 'Day'} ${i}`,
              amount: amountPerPeriod,
+             date: displayDate.toISOString(),
              completed: false
         });
     }
@@ -380,7 +389,10 @@ Generate a structured financial plan. The output must match the JSON schema expl
                                       >
                                           <div className="flex items-center gap-3">
                                               {milestone.completed ? <CheckCircle size={18} className="text-green-500" /> : <Circle size={18} className="text-gray-300" />}
-                                              <span className="text-sm font-bold opacity-90">{milestone.title}</span>
+                                              <span className="text-sm font-bold opacity-90">
+                                                  {milestone.title}
+                                                  {milestone.date && <span className="text-[10px] text-gray-400 block font-medium mt-0.5">{new Date(milestone.date).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}</span>}
+                                              </span>
                                           </div>
                                           <span className="text-sm font-bold opacity-90">
                                               {formatCurrency(milestone.amount, currencyCode)}
@@ -467,7 +479,7 @@ Generate a structured financial plan. The output must match the JSON schema expl
       {/* Add Goal Modal */}
       {isAddingGoal && (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4">
-              <div className="bg-white w-full max-w-sm rounded-[32px] sm:rounded-[32px] rounded-b-none p-6 shadow-2xl animate-in slide-in-from-bottom-full max-h-[85vh] overflow-y-auto pb-safe">
+              <div className="bg-white w-full max-w-sm rounded-[32px] sm:rounded-[32px] rounded-b-none p-6 shadow-2xl animate-in slide-in-from-bottom-full max-h-[85vh] overflow-y-auto pb-12 sm:pb-6">
                   <div className="flex justify-between items-center mb-6">
                       <h2 className="text-xl font-bold text-gray-900">{editingGoalId ? 'Edit Savings Goal' : 'New Savings Goal'}</h2>
                       <button onClick={() => { setIsAddingGoal(false); setEditingGoalId(null); }} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600">
