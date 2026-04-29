@@ -49,7 +49,7 @@ export default function Insights() {
   })).sort((a, b) => (b.value as number) - (a.value as number));
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 pb-8 px-4 pt-12 tracking-tight">
+    <div className="flex flex-col tracking-tight pt-4">
       <h1 className="text-2xl font-bold text-gray-900 mb-6 px-1 flex items-center gap-2 pr-12">
          <BarChart3 className="text-brand-600" />
          Analysis & Insights
@@ -109,10 +109,25 @@ export default function Insights() {
       
       <div className="mt-2">
         <h3 className="text-lg font-bold text-gray-900 mb-4 px-1">Spending Patterns</h3>
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-           <p className="text-sm text-gray-600 leading-relaxed">
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col gap-3">
+           <p className="text-sm text-gray-600 leading-relaxed mb-2">
              {chartData.length > 0 ? `You've spent the most on ${chartData[0].name} (${Math.round((chartData[0].value as number) / totalExpense * 100)}% of your expenses) this month. Keep an eye on it to ensure you stay within your budget.` : "We need more data to analyze your spending patterns."}
            </p>
+           
+           <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Transaction Reports</h4>
+           <div className="flex flex-wrap gap-2">
+              <a href="#history/all?period=weekly" className="text-xs font-semibold text-brand-600 bg-brand-50 px-3 py-1.5 rounded-full hover:bg-brand-100 transition-colors">Weekly Report</a>
+              <a href="#history/all?period=monthly" className="text-xs font-semibold text-brand-600 bg-brand-50 px-3 py-1.5 rounded-full hover:bg-brand-100 transition-colors">Monthly Report</a>
+              <a href="#history/all?period=yearly" className="text-xs font-semibold text-brand-600 bg-brand-50 px-3 py-1.5 rounded-full hover:bg-brand-100 transition-colors">Yearly Report</a>
+           </div>
+           
+           <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mt-2">Views</h4>
+           <div className="flex flex-wrap gap-2">
+               <a href="#history/all" className="text-xs font-semibold text-gray-600 bg-gray-50 px-3 py-1.5 rounded-full hover:bg-gray-100 transition-colors border border-gray-200">All Transactions</a>
+               <a href="#history/income" className="text-xs font-semibold text-success-600 bg-success-50 px-3 py-1.5 rounded-full hover:bg-success-100 transition-colors">Income</a>
+               <a href="#history/expense" className="text-xs font-semibold text-danger-600 bg-danger-50 px-3 py-1.5 rounded-full hover:bg-danger-100 transition-colors">Expenses</a>
+               <a href="#history/debt" className="text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors">Debts</a>
+           </div>
         </div>
       </div>
     </div>

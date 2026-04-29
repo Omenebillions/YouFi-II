@@ -119,7 +119,7 @@ export default function AddTransaction() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f8f9fc] pb-8 tracking-tight px-6 pt-12">
+    <div className="flex flex-col tracking-tight pt-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-8 pr-12">
         <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
@@ -240,10 +240,10 @@ export default function AddTransaction() {
       <div>
          <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-gray-900">Last Added</h2>
-          <span className="text-xs font-semibold text-brand-600 bg-brand-50 px-3 py-1.5 rounded-full">View All</span>
+          <span onClick={() => window.location.href = '#history/all'} className="text-xs font-semibold text-brand-600 bg-brand-50 px-3 py-1.5 rounded-full cursor-pointer hover:bg-brand-100 transition-colors">View All</span>
         </div>
         
-        <div className="flex flex-col gap-4 pb-20">
+        <div className="flex flex-col gap-4 pb-32">
             {recentAdded.slice(0, 4).map((tx: any, i: number) => {
               const bgs = ['bg-[#ffedb5]/30 text-orange-500', 'bg-[#eef2ff] text-brand-500', 'bg-red-50 text-red-500', 'bg-green-50 text-green-500'];
               const bg = bgs[Math.abs(tx.category.length) % bgs.length];

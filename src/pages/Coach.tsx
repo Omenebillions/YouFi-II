@@ -91,9 +91,9 @@ Understand the spread: If your debt interest rate is 8% and your investment retu
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 flex-1 relative">
+    <div className="flex flex-col h-full flex-1 relative pt-4">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 pt-12 pb-4 px-4 pr-12 sticky top-0 z-10 flex items-center gap-3">
+      <div className="bg-[#f8f9fc]/80 backdrop-blur-md pt-4 pb-4 px-4 pr-12 sticky top-0 z-10 flex items-center gap-3">
         <div className="w-10 h-10 bg-brand-50 rounded-full flex items-center justify-center text-brand-600">
            <Brain size={22} />
         </div>
@@ -133,7 +133,7 @@ Understand the spread: If your debt interest rate is 8% and your investment retu
       </div>
       
       {/* Input */}
-      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 py-3 pb-safe">
+      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 py-3 pb-32">
         <div className="flex items-center gap-2">
            <input 
              type="text" 

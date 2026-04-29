@@ -16,6 +16,13 @@ import Goals from './pages/Goals';
 import Profile from './pages/Profile';
 import HistoryPage from './pages/HistoryPage';
 import AutoImport from './pages/AutoImport';
+import BusinessList from './pages/BusinessList';
+import BusinessDashboard from './pages/BusinessDashboard';
+import BusinessProductList from './pages/BusinessProductList';
+import BusinessSaleList from './pages/BusinessSaleList';
+import BusinessTransactionList from './pages/BusinessTransactionList';
+import BusinessDebtList from './pages/BusinessDebtList';
+import UpcomingPayments from './pages/UpcomingPayments';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -47,6 +54,13 @@ export default function App() {
             <Route path="goals" element={<Goals />} />
             <Route path="profile" element={<Profile />} />
             <Route path="history/:type" element={<HistoryPage />} />
+            <Route path="business" element={<BusinessList />} />
+            <Route path="business/:businessId" element={<BusinessDashboard />} />
+            <Route path="business/:businessId/products" element={<BusinessProductList />} />
+            <Route path="business/:businessId/sales" element={<BusinessSaleList />} />
+            <Route path="business/:businessId/transactions/:type" element={<BusinessTransactionList />} />
+            <Route path="business/:businessId/debts" element={<BusinessDebtList />} />
+            <Route path="upcoming-payments" element={<UpcomingPayments />} />
           </Route>
         </Routes>
       </BrowserRouter>
