@@ -65,6 +65,100 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "message", "type", "createdAt"]
+    },
+    "Business": {
+      "title": "Business",
+      "description": "A small or medium enterprise owned by a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "balance": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "balance", "createdAt"]
+    },
+    "BusinessTransaction": {
+      "title": "BusinessTransaction",
+      "description": "Financial transaction for a specific business.",
+      "type": "object",
+      "properties": {
+        "businessId": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "note": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["businessId", "userId", "type", "amount", "category", "date", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A product offered by a business.",
+      "type": "object",
+      "properties": {
+        "businessId": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "costPrice": { "type": "number" },
+        "sellingPrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "isService": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["businessId", "userId", "name", "costPrice", "sellingPrice", "stock", "createdAt"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "A sale record for a business.",
+      "type": "object",
+      "properties": {
+        "businessId": { "type": "string" },
+        "userId": { "type": "string" },
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unitPrice": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "profit": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["businessId", "userId", "productId", "quantity", "totalPrice", "date", "createdAt"]
+    },
+    "BusinessDebt": {
+      "title": "BusinessDebt",
+      "description": "Debt or credit owed by/to a business.",
+      "type": "object",
+      "properties": {
+        "businessId": { "type": "string" },
+        "userId": { "type": "string" },
+        "lender": { "type": "string" },
+        "amount": { "type": "number" },
+        "dueDate": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["unpaid", "paid"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["businessId", "userId", "lender", "amount", "status", "createdAt"]
+    },
+    "UpcomingPayment": {
+      "title": "UpcomingPayment",
+      "description": "A payment reminder for the user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "dueDate": { "type": "string", "format": "date" },
+        "isRecurring": { "type": "boolean" },
+        "frequency": { "type": "string", "enum": ["daily", "weekly", "monthly", "yearly"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "amount", "dueDate", "isRecurring", "createdAt"]
     }
   },
   "firestore": {
@@ -87,6 +181,30 @@
     "/aiInsights/{insightId}": {
       "schema": { "$ref": "#/entities/AIInsight" },
       "description": "AI insights. Filtered by userId."
+    },
+    "/businesses/{businessId}": {
+      "schema": { "$ref": "#/entities/Business" },
+      "description": "Business profiles. Owned by the user."
+    },
+    "/businessTransactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/BusinessTransaction" },
+      "description": "Business transactions. Filtered by businessId or userId."
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Business products. Filtered by businessId."
+    },
+    "/sales/{saleId}": {
+      "schema": { "$ref": "#/entities/Sale" },
+      "description": "Business sales. Filtered by businessId."
+    },
+    "/businessDebts/{debtId}": {
+      "schema": { "$ref": "#/entities/BusinessDebt" },
+      "description": "Business debts. Filtered by businessId."
+    },
+    "/upcomingPayments/{paymentId}": {
+      "schema": { "$ref": "#/entities/UpcomingPayment" },
+      "description": "Upcoming payments for a user."
     }
   }
 }

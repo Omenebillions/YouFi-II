@@ -43,7 +43,7 @@ export default function Profile() {
   const currentSymbol = CURRENCIES.find(c => c.code === currency)?.symbol || '$';
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 pb-8 px-4 pt-12 tracking-tight">
+    <div className="flex flex-col tracking-tight pt-4 pb-32">
       <h1 className="text-2xl font-bold text-gray-900 mb-6 px-1 pr-12">Settings</h1>
       
       {/* Profile Header */}

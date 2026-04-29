@@ -18,12 +18,33 @@ export default function HistoryPage() {
 
   const currencyCode = userProfile?.currency || 'USD';
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const period = urlParams.get('period');
+
   const loadData = async () => {
     if (!user) return;
     setLoading(true);
     const txs = await fetchTransactions(user.uid);
     if (txs) {
-      setTransactions(txs.filter(t => t.type === type));
+      let filteredTxs = txs;
+      
+      if (type && type !== 'all' && type !== 'all_transactions') {
+        filteredTxs = filteredTxs.filter(t => t.type === type);
+      }
+
+      const now = new Date();
+      if (period === 'weekly') {
+          const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          filteredTxs = filteredTxs.filter(t => t.date && new Date(t.date) >= oneWeekAgo);
+      } else if (period === 'monthly') {
+          const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+          filteredTxs = filteredTxs.filter(t => t.date && new Date(t.date) >= oneMonthAgo);
+      } else if (period === 'yearly') {
+          const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+          filteredTxs = filteredTxs.filter(t => t.date && new Date(t.date) >= oneYearAgo);
+      }
+
+      setTransactions(filteredTxs);
     }
     setLoading(false);
   };
@@ -64,21 +85,25 @@ export default function HistoryPage() {
     loadData();
   };
 
-  const total = transactions.reduce((acc, t) => acc + t.amount, 0);
+  const total = transactions.reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0);
 
   const titles: Record<string, string> = {
     income: 'Total Income',
     expense: 'Total Expenses',
-    debt: 'Total Debts'
+    debt: 'Total Debts',
+    all: 'Net Balance',
+    all_transactions: 'Net Balance'
   };
 
+  const periodDisplay = period ? ` (${period})` : '';
+
   return (
-    <div className="flex flex-col min-h-screen bg-[#f8f9fc] pb-8 tracking-tight px-6 pt-12">
+    <div className="flex flex-col tracking-tight pt-4">
       <div className="flex items-center justify-between mb-8 pr-12">
         <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-lg font-bold text-gray-900 capitalize">{type} History</h1>
+        <h1 className="text-lg font-bold text-gray-900 capitalize">{(!type || type === 'all' || type === 'all_transactions') ? 'All' : type} History{periodDisplay}</h1>
         <div className="w-4"></div>
       </div>
 
@@ -135,7 +160,13 @@ export default function HistoryPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="text-sm font-bold text-gray-900 capitalize">{tx.category} {tx.note && <span className="font-normal text-gray-500">- {tx.note}</span>}</h4>
-                      <p className="text-xs text-gray-400 font-medium mt-1">{new Date(tx.date).toLocaleDateString()}</p>
+                      {tx.date && (() => {
+                          const d = new Date(tx.date);
+                          const mm = String(d.getMonth() + 1).padStart(2, '0');
+                          const dd = String(d.getDate()).padStart(2, '0');
+                          const yyyy = d.getFullYear();
+                          return <p className="text-xs text-gray-400 font-medium mt-1">{mm}/{dd}/{yyyy}</p>;
+                      })()}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`text-sm font-bold mr-2 ${tx.type === 'income' ? 'text-success-500' : 'text-danger-500'}`}>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, UploadCloud, FileText, Check, X, Tag } from 'lucide-react';
+import { ArrowLeft, UploadCloud, FileText, Check, X, Tag, FileDigit } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 import * as xlsx from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,13 +16,50 @@ interface ParsedTransaction {
   selected?: boolean;
 }
 
+const parseTextRegex = (text: string): ParsedTransaction[] => {
+  const lines = text.split("\n");
+
+  const transactions = lines.map(line => {
+    // Look for common currency amounts
+    const amountMatch = line.match(/(?:[$£€₦]|NGN|USD)?\s?[\d,]+\.\d{2}|\b(?:[$£€₦]|NGN|USD)?\s?[\d,]+/);
+    const dateMatch = line.match(/\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4}|\d{2}-\d{2}-\d{4}/);
+
+    const amountStr = amountMatch ? amountMatch[0].replace(/[^0-9.]/g, '') : null;
+    const amount = amountStr ? parseFloat(amountStr) : null;
+
+    if (!amount) return null;
+
+    const lowerLine = line.toLowerCase();
+    const type = (lowerLine.includes("debit") || lowerLine.includes("dr ") || line.includes("-")) ? "expense" 
+               : (lowerLine.includes("credit") || lowerLine.includes("cr ") || lowerLine.includes("deposit")) ? "income" 
+               : "expense"; // default to expense if unknown
+
+    let desc = line;
+    if (amountMatch) desc = desc.replace(amountMatch[0], "");
+    if (dateMatch) desc = desc.replace(dateMatch[0], "");
+    
+    // Cleanup description
+    desc = desc.replace(/debit|credit|dr\b|cr\b/gi, '').trim().replace(/^[^a-zA-Z0-9]+/, '');
+
+    return {
+      amount: amount,
+      date: dateMatch ? dateMatch[0].replace(/\//g, '-') : new Date().toISOString().split('T')[0],
+      type: type as 'income' | 'expense',
+      category: 'Uncategorized', 
+      note: desc.substring(0, 50).trim() || 'Imported Transaction',
+      selected: true
+    };
+  }).filter(t => t !== null) as ParsedTransaction[];
+
+  return transactions;
+};
+
 const parseDataHeuristically = (data: any[]): ParsedTransaction[] => {
   if (data.length === 0) return [];
 
   // Find columns heuristically
-  const firstRow = data[data.length > 1 ? 1 : 0]; // look at second row if exists as first might be weird, but let's check all keys across first few rows
+  const firstRow = data[data.length > 1 ? 1 : 0]; 
   
-  // Aggregate all keys from the first 5 rows to handle missing keys in the first row
   const availableKeys = new Set<string>();
   data.slice(0, 5).forEach(row => Object.keys(row).forEach(k => availableKeys.add(k)));
   const keys = Array.from(availableKeys);
@@ -30,7 +67,7 @@ const parseDataHeuristically = (data: any[]): ParsedTransaction[] => {
   let dateKey = '', amountKey = '', debitKey = '', creditKey = '', noteKey = '', catKey = '';
   
   keys.forEach(k => {
-    const lower = k.toLowerCase().replace(/[^a-z]/g, ''); // strip spaces/symbols for simpler matching
+    const lower = k.toLowerCase().replace(/[^a-z]/g, ''); 
     if (!dateKey && (lower.includes('date') || lower.includes('time'))) dateKey = k;
     else if (!amountKey && (lower.includes('amount') || lower.includes('value'))) amountKey = k;
     else if (!debitKey && (lower.includes('debit') || lower.includes('out') || lower.includes('withdrawal'))) debitKey = k;
@@ -42,7 +79,6 @@ const parseDataHeuristically = (data: any[]): ParsedTransaction[] => {
   const parsed: ParsedTransaction[] = [];
   
   data.forEach(row => {
-     // If we don't have note and amount, skip this row
      if (!row[noteKey] && !row[amountKey] && !row[debitKey] && !row[creditKey]) return;
      
      let txType: 'income' | 'expense' | 'debt' = 'expense';
@@ -50,8 +86,6 @@ const parseDataHeuristically = (data: any[]): ParsedTransaction[] => {
      
      if (amountKey && row[amountKey] !== undefined && row[amountKey] !== '') {
         const valStr = row[amountKey].toString();
-        // Simple heuristic: negative amount = expense, positive = income 
-        // This is not always true for all bank statements, but it works for many standard formats
         const val = parseFloat(valStr.replace(/[^0-9.-]+/g, ""));
         if (!isNaN(val)) {
            amount = Math.abs(val);
@@ -71,17 +105,15 @@ const parseDataHeuristically = (data: any[]): ParsedTransaction[] => {
         }
      }
      
-     if (amount === 0) return; // skip zero amounts
+     if (amount === 0) return; 
      
      let date = new Date().toISOString().split('T')[0];
      if (dateKey && row[dateKey]) {
-        // Many excel date parsing might give numbers or strings. We use a simple strategy here.
         const dateStr = row[dateKey].toString();
         const d = new Date(dateStr);
         if (!isNaN(d.getTime())) {
            date = d.toISOString().split('T')[0];
         } else {
-           // Fallback to original string if Date() fails but string seems like a date
            date = dateStr.substring(0, 10);
         }
      }
@@ -105,7 +137,9 @@ const parseDataHeuristically = (data: any[]): ParsedTransaction[] => {
 export default function AutoImport() {
   const navigate = useNavigate();
   const { userProfile } = useAuth();
+  const [activeMode, setActiveMode] = useState<'file' | 'text'>('file');
   const [file, setFile] = useState<File | null>(null);
+  const [rawText, setRawText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [parsedTxs, setParsedTxs] = useState<ParsedTransaction[]>([]);
@@ -125,14 +159,68 @@ export default function AutoImport() {
       reader.readAsDataURL(file);
       reader.onload = () => {
         const result = reader.result as string;
-        // Strip the data URL prefix
         resolve(result.split(',')[1]);
       };
       reader.onerror = error => reject(error);
     });
   };
 
-  const parseFile = async () => {
+  const parseInput = async () => {
+    if (activeMode === 'text') {
+      if (!rawText.trim()) return;
+      setLoading(true);
+      setError('');
+      try {
+        // Try regex first for simple text blocks
+        let parsed = parseTextRegex(rawText);
+        
+        // If regex fails or parses poorly, use AI as fallback if we wanted to...
+        // But the prompt wants us to use their cue for robustness. So regex rules directly!
+        if (parsed.length === 0) {
+            // Enhanced AI Prompt for raw text
+            const apiKey = process.env.GEMINI_API_KEY;
+            if (apiKey) {
+               const ai = new GoogleGenAI({ apiKey });
+               const response = await ai.models.generateContent({
+                  model: 'gemini-3-flash-preview',
+                  contents: { parts: [{ text: `Parse these transactions. Look for DEBIT/CREDIT indicators, amounts, and dates:\n\n${rawText}` }] },
+                  config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                      type: Type.ARRAY,
+                      items: {
+                        type: Type.OBJECT,
+                        properties: {
+                          type: { type: Type.STRING, description: "'income', 'expense', or 'debt'" },
+                          amount: { type: Type.NUMBER },
+                          category: { type: Type.STRING },
+                          note: { type: Type.STRING },
+                          date: { type: Type.STRING },
+                        }, required: ["type", "amount", "category", "note", "date"]
+                      }
+                    }
+                  }
+               });
+               parsed = JSON.parse(response.text || "[]");
+            }
+        }
+        
+        if (parsed.length === 0) throw new Error("Could not detect any transactions in the text.");
+        
+        setParsedTxs(parsed.map(p => ({
+            ...p,
+            type: ['income', 'expense', 'debt'].includes(p.type) ? p.type : 'expense',
+            amount: Math.abs(Number(p.amount) || 0),
+            selected: true
+        })));
+      } catch (err: any) {
+        setError(err.message || "Failed to parse text. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!file) return;
     setLoading(true);
     setError('');
@@ -164,40 +252,61 @@ export default function AutoImport() {
           }
         }];
         
-        contentParts.push({ text: "Extract all transaction records from this statement. Categorize each transaction appropriately. The output must be JSON matching the schema." });
-
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: { parts: contentParts },
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  type: { type: Type.STRING, description: "MUST be exactly 'income', 'expense', or 'debt'" },
-                  amount: { type: Type.NUMBER, description: "Absolute amount value" },
-                  category: { type: Type.STRING, description: "Short, general category name (e.g. Salary, Utilities, Food)" },
-                  note: { type: Type.STRING, description: "Original transaction description" },
-                  date: { type: Type.STRING, description: "Date of transaction in YYYY-MM-DD format" },
-                },
-                required: ["type", "amount", "category", "note", "date"]
-              }
-            }
-          }
-        });
-
-        const responseText = response.text || "[]";
-        let parsed = JSON.parse(responseText.trim());
+        let parsed: ParsedTransaction[] = [];
         
-        // Validation & Cleanup
-        parsed = parsed.map((p: any) => ({
-           ...p,
-           type: ['income', 'expense', 'debt'].includes(p.type) ? p.type : 'expense',
-           amount: Math.abs(Number(p.amount) || 0),
-           selected: true
-        }));
+        // If it's an image, let's try offline OCR first for robustness
+        if (['jpg', 'jpeg', 'png'].includes(extension || '')) {
+            try {
+                // We do a dynamic import so Tesseract doesn't block initial load
+                const Tesseract = await import('tesseract.js');
+                const tesseractResult = await Tesseract.recognize(file, 'eng');
+                const ocrText = tesseractResult.data.text;
+                
+                if (ocrText && ocrText.trim()) {
+                   // Run through our robust text regex parser
+                   parsed = parseTextRegex(ocrText);
+                }
+            } catch (ocrErr) {
+                console.warn('OCR fallback failed', ocrErr);
+            }
+        }
+        
+        // If OCR didn't work or found no transactions, or if it's a PDF, fall back to AI
+        if (parsed.length === 0) {
+            contentParts.push({ text: "Extract all transaction records from this statement. Look for indicators such as 'DEBIT', 'CREDIT', amounts, and dates. Apply regex patterns to identify them. Categorize each transaction appropriately. The output must be JSON matching the schema." });
+    
+            const response = await ai.models.generateContent({
+              model: 'gemini-3-flash-preview',
+              contents: { parts: contentParts },
+              config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      type: { type: Type.STRING, description: "MUST be exactly 'income', 'expense', or 'debt'" },
+                      amount: { type: Type.NUMBER, description: "Absolute amount value" },
+                      category: { type: Type.STRING, description: "Short, general category name (e.g. Salary, Utilities, Food)" },
+                      note: { type: Type.STRING, description: "Original transaction description" },
+                      date: { type: Type.STRING, description: "Date of transaction in YYYY-MM-DD format" },
+                    },
+                    required: ["type", "amount", "category", "note", "date"]
+                  }
+                }
+              }
+            });
+    
+            const responseText = response.text || "[]";
+            parsed = JSON.parse(responseText.trim());
+            
+            parsed = parsed.map((p: any) => ({
+               ...p,
+               type: ['income', 'expense', 'debt'].includes(p.type) ? p.type : 'expense',
+               amount: Math.abs(Number(p.amount) || 0),
+               selected: true
+            }));
+        }
 
         setParsedTxs(parsed);
 
@@ -214,11 +323,16 @@ export default function AutoImport() {
          }
          
          setParsedTxs(parsedLocal);
+      } else if (['txt'].includes(extension || '')) {
+         const text = await file.text();
+         const parsedLocal = parseTextRegex(text);
+         if (parsedLocal.length === 0) throw new Error("Could not detect transactions from text.");
+         setParsedTxs(parsedLocal);
       } else {
-         throw new Error('Unsupported file type. Please upload JPEG, PNG, PDF, or Excel/CSV.');
+         throw new Error('Unsupported file type. Please upload JPEG, PNG, PDF, Excel, CSV, or TXT.');
       }
 
-      setFile(null); // Clear file after successful parse
+      setFile(null); 
 
     } catch (err: any) {
       console.error(err);
@@ -270,7 +384,7 @@ export default function AutoImport() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f8f9fc] pb-8 tracking-tight px-6 pt-12">
+    <div className="flex flex-col tracking-tight pt-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-8 pr-12">
         <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
@@ -281,26 +395,62 @@ export default function AutoImport() {
       </div>
 
       {parsedTxs.length === 0 ? (
-        <div className="flex flex-col items-center">
-           <div className="bg-brand-50 border-2 border-brand-200 border-dashed rounded-3xl w-full p-8 flex flex-col items-center justify-center text-center">
-              <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 mb-4">
-                 <UploadCloud size={32} />
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Upload Statement</h3>
-              <p className="text-sm text-gray-500 mb-6 max-w-xs">We support JPEG, PNG, PDF, and Excel files. Our AI will automatically extract your transactions.</p>
-              
-              <label className="bg-brand-600 text-white font-bold py-3 px-6 rounded-xl cursor-pointer hover:bg-brand-700 transition-colors shadow-sm">
-                Choose File
-                <input 
-                  type="file" 
-                  accept=".jpg,.jpeg,.png,.pdf,.xls,.xlsx,.csv" 
-                  className="hidden" 
-                  onChange={handleFileChange}
-                />
-              </label>
+        <div className="flex flex-col items-center pb-24">
+           {/* Mode Tabs */}
+           <div className="bg-white p-1 rounded-2xl flex items-center shadow-sm border border-gray-100 mb-8 relative w-full h-[52px]">
+               <div 
+                   className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-brand-50 rounded-xl transition-all duration-300 ease-out border border-brand-100 ${activeMode === 'text' ? 'translate-x-[calc(100%+4px)]' : 'translate-x-0'}`} 
+               />
+               <button 
+                   onClick={() => setActiveMode('file')}
+                   className={`flex-1 flex items-center justify-center gap-2 h-full text-sm font-bold z-10 transition-colors ${activeMode === 'file' ? 'text-brand-700' : 'text-gray-500 hover:text-gray-900'}`}
+               >
+                   <UploadCloud size={16} /> File Upload
+               </button>
+               <button 
+                   onClick={() => setActiveMode('text')}
+                   className={`flex-1 flex items-center justify-center gap-2 h-full text-sm font-bold z-10 transition-colors ${activeMode === 'text' ? 'text-brand-700' : 'text-gray-500 hover:text-gray-900'}`}
+               >
+                   <FileDigit size={16} /> Paste Text/SMS
+               </button>
            </div>
+
+           {activeMode === 'file' ? (
+             <div className="bg-brand-50 border-2 border-brand-200 border-dashed rounded-3xl w-full p-8 flex flex-col items-center justify-center text-center">
+                <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 mb-4">
+                   <UploadCloud size={32} />
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Upload Statement</h3>
+                <p className="text-sm text-gray-500 mb-6 max-w-xs">We support JPEG, PNG, PDF, Excel, and TXT files. Our AI will automatically extract your transactions.</p>
+                
+                <label className="bg-brand-600 text-white font-bold py-3 px-6 rounded-xl cursor-pointer hover:bg-brand-700 transition-colors shadow-sm">
+                  Choose File
+                  <input 
+                    type="file" 
+                    accept=".jpg,.jpeg,.png,.pdf,.xls,.xlsx,.csv,.txt" 
+                    className="hidden" 
+                    onChange={handleFileChange}
+                  />
+                </label>
+             </div>
+           ) : (
+             <div className="w-full">
+                <textarea 
+                  value={rawText}
+                  onChange={(e) => setRawText(e.target.value)}
+                  placeholder="Paste bank SMS, transaction alerts, or OCR text here...
+
+e.g. TRANSFER CREDIT N15,000
+POS DEBIT -₦3,200
+2024-01-12
+REF: 938293882
+DESCRIPTION: SPAR LAGOS"
+                  className="w-full min-h-[250px] bg-white border border-gray-200 rounded-3xl p-6 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none font-mono"
+                />
+             </div>
+           )}
            
-           {file && (
+           {file && activeMode === 'file' && (
              <div className="w-full mt-6 bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <FileText className="text-gray-400" size={24} />
@@ -318,11 +468,11 @@ export default function AutoImport() {
            {error && <p className="mt-4 text-sm font-medium text-red-500 bg-red-50 p-3 rounded-lg w-full">{error}</p>}
            
            <button
-             onClick={parseFile}
-             disabled={!file || loading}
+             onClick={parseInput}
+             disabled={(activeMode === 'file' ? !file : !rawText) || loading}
              className="w-full mt-8 py-4 bg-gray-900 text-white rounded-xl font-bold disabled:opacity-50 transition-all active:scale-95 shadow-md flex items-center justify-center gap-2"
            >
-             {loading ? 'Analyzing with AI...' : 'Analyze Document'}
+             {loading ? 'Analyzing with Parsing Engine...' : 'Extract Transactions'}
            </button>
         </div>
       ) : (
@@ -347,7 +497,7 @@ export default function AutoImport() {
                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${tx.type === 'income' ? 'bg-green-100 text-green-700' : tx.type === 'debt' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
                          {tx.type}
                        </span>
-                       <span className="text-xs text-gray-400 font-medium">{tx.date}</span>
+                       <span className="text-xs text-gray-400 font-medium whitespace-nowrap">{tx.date}</span>
                     </div>
                     
                     <div className="flex flex-col gap-2">
@@ -383,7 +533,7 @@ export default function AutoImport() {
              ))}
            </div>
 
-           <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100 shadow-lg">
+           <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100 shadow-lg z-50">
              <button
                onClick={submitTransactions}
                disabled={parsedTxs.filter(t => t.selected).length === 0 || loading}

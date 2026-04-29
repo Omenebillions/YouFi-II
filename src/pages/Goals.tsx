@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Target, Plus, Flag, Briefcase, CalendarCheck, CheckSquare, Sparkles, X, Loader2, ChevronDown, ChevronUp, CheckCircle, Circle, Trash2, Edit2 } from 'lucide-react';
-import { getGoals, addGoal, updateGoal, deleteGoal, getPlans, addPlan, updatePlan, fetchTransactions } from '../services/db';
+import { getGoals, addGoal, updateGoal, deleteGoal, getPlans, addPlan, updatePlan, deletePlan, fetchTransactions } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency } from '../lib/currency';
 import { GoogleGenAI, Type } from '@google/genai';
+import { motivationQuotes } from '../lib/quotes';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -14,14 +15,28 @@ export default function Goals() {
   const [activeTab, setActiveTab] = useState<'goals' | 'plans'>('goals');
   const [isAddingGoal, setIsAddingGoal] = useState(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [isAddingPlan, setIsAddingPlan] = useState(false);
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null);
   const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
   
   // Goal Form State
   const [newGoal, setNewGoal] = useState({ title: '', targetAmount: '', deadline: '', emoji: '🎯', frequency: 'monthly' });
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+
+  // Plan Form State
+  const [newPlan, setNewPlan] = useState<{title: string, description: string, deadline: string, tasks: string[]}>({ title: '', description: '', deadline: '', tasks: [''] });
   
   const currencyCode = userProfile?.currency || 'USD';
+
+  const dailyQuote = useMemo(() => {
+     const now = new Date();
+     const start = new Date(now.getFullYear(), 0, 0);
+     const diff = now.getTime() - start.getTime();
+     const oneDay = 1000 * 60 * 60 * 24;
+     const dayOfYear = Math.floor(diff / oneDay);
+     return motivationQuotes[dayOfYear % motivationQuotes.length];
+  }, []);
 
   const loadData = async () => {
     if (user) {
@@ -192,6 +207,78 @@ export default function Goals() {
       });
   };
 
+  const handleAddPlanTask = () => setNewPlan(prev => ({...prev, tasks: [...prev.tasks, '']}));
+  const handleRemovePlanTask = (index: number) => setNewPlan(prev => ({...prev, tasks: prev.tasks.filter((_, i) => i !== index)}));
+  const handleTaskTitleChange = (index: number, val: string) => {
+    const updated = [...newPlan.tasks];
+    updated[index] = val;
+    setNewPlan(prev => ({...prev, tasks: updated}));
+  };
+
+  const handleManualAddPlan = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!user) return;
+      
+      const validTasks = newPlan.tasks.filter(t => t.trim().length > 0);
+      
+      if (editingPlanId) {
+          const planToUpdate = plans.find(p => p.id === editingPlanId);
+          const existingTasks = planToUpdate?.planData?.tasksList || [];
+          const tasksList = validTasks.map(t => {
+              const existing = existingTasks.find((et: any) => et.title === t.trim());
+              return { id: existing ? existing.id : Math.random().toString(36).substring(7), title: t.trim(), completed: existing ? existing.completed : false };
+          });
+          const completedCount = tasksList.filter(t => t.completed).length;
+          const progress = tasksList.length > 0 ? (completedCount / tasksList.length) * 100 : 0;
+          
+          await updatePlan(editingPlanId, {
+              title: newPlan.title,
+              description: newPlan.description,
+              status: progress === 100 ? 'completed' : 'active',
+              progress,
+              tasks: tasksList.length,
+              completedTasks: completedCount,
+              planData: { tasksList, ...(newPlan.deadline ? { deadline: newPlan.deadline } : {}) }
+          });
+      } else {
+          const tasksList = validTasks.map(t => ({ id: Math.random().toString(36).substring(7), title: t.trim(), completed: false }));
+          await addPlan({
+              title: newPlan.title,
+              description: newPlan.description,
+              status: 'active',
+              progress: 0,
+              tasks: tasksList.length,
+              completedTasks: 0,
+              planData: { tasksList, ...(newPlan.deadline ? { deadline: newPlan.deadline } : {}) }
+          });
+      }
+      
+      setIsAddingPlan(false);
+      setEditingPlanId(null);
+      setNewPlan({ title: '', description: '', deadline: '', tasks: [''] });
+      loadData();
+  };
+
+  const startEditPlan = (plan: any, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setEditingPlanId(plan.id);
+      setNewPlan({
+          title: plan.title,
+          description: plan.description || '',
+          deadline: plan.planData?.deadline || '',
+          tasks: plan.planData?.tasksList?.map((t: any) => t.title) || ['']
+      });
+      setIsAddingPlan(true);
+  };
+
+  const handleDeletePlan = async (id: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (window.confirm('Are you sure you want to delete this plan?')) {
+          await deletePlan(id);
+          loadData();
+      }
+  };
+
   const handleGeneratePlan = async () => {
       if (!user) return;
       setIsGeneratingPlan(true);
@@ -256,19 +343,26 @@ Generate a structured financial plan. The output must match the JSON schema expl
   };
 
   return (
-    <div className="flex flex-col min-h-[100dvh] bg-[#f8f9fc] pb-24 px-6 pt-12 tracking-tight overflow-y-auto">
+    <div className="flex flex-col tracking-tight pt-4">
       <div className="flex items-center justify-between mb-8 pr-12">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
            <Flag className="text-brand-600" />
            Future & Strategy
         </h1>
-        {activeTab === 'goals' && (
-            <button 
-                onClick={() => setIsAddingGoal(true)}
-                className="w-10 h-10 bg-brand-600 text-white shadow-md rounded-full flex items-center justify-center transition-transform active:scale-95">
-                <Plus size={20} />
-            </button>
-        )}
+        <button 
+            onClick={() => activeTab === 'goals' ? setIsAddingGoal(true) : setIsAddingPlan(true)}
+            className="w-10 h-10 bg-brand-600 text-white shadow-md rounded-full flex items-center justify-center transition-transform active:scale-95">
+            <Plus size={20} />
+        </button>
+      </div>
+
+      <div className="mb-8 p-5 bg-gradient-to-br from-brand-50 to-white border border-brand-100/50 rounded-2xl shadow-sm relative overflow-hidden">
+        <div className="absolute -top-4 -right-4 text-brand-100 opacity-50 transform rotate-12">
+            <Sparkles size={80} />
+        </div>
+        <p className="text-brand-800 text-sm italic font-medium leading-relaxed relative z-10">
+          {dailyQuote}
+        </p>
       </div>
 
       {/* Segmented Control */}
@@ -292,6 +386,19 @@ Generate a structured financial plan. The output must match the JSON schema expl
       
       {activeTab === 'goals' && (
         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          {goals.length > 0 && (
+             <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex justify-around mb-2">
+                <div className="text-center">
+                   <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Total Saved</p>
+                   <p className="text-lg font-bold text-brand-600">{formatCurrency(goals.reduce((sum, g) => sum + (Number(g.savedAmount) || 0), 0), currencyCode)}</p>
+                </div>
+                <div className="w-px bg-gray-100"></div>
+                <div className="text-center">
+                   <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Total Target</p>
+                   <p className="text-lg font-bold text-gray-900">{formatCurrency(goals.reduce((sum, g) => sum + (Number(g.targetAmount) || 0), 0), currencyCode)}</p>
+                </div>
+             </div>
+          )}
           {goals.length === 0 ? (
               <div className="text-center py-10 bg-white rounded-3xl border border-gray-100 shadow-sm">
                   <div className="w-16 h-16 bg-brand-50 rounded-full flex items-center justify-center mx-auto mb-4 text-brand-600">
@@ -443,9 +550,26 @@ Generate a structured financial plan. The output must match the JSON schema expl
                          {plan.title}
                          {expandedPlanId === plan.id ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
                      </h3>
-                     <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-md ${plan.status === 'completed' ? 'text-green-600 bg-green-50' : 'text-brand-600 bg-brand-50'}`}>
-                        {plan.status}
-                     </span>
+                     <div className="flex gap-2 items-center mt-1">
+                         <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-md ${plan.status === 'completed' ? 'text-green-600 bg-green-50' : 'text-brand-600 bg-brand-50'}`}>
+                            {plan.status}
+                         </span>
+                         {plan.planData?.deadline && (
+                             <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">
+                                 Due {new Date(plan.planData.deadline).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}
+                             </span>
+                         )}
+                         {expandedPlanId === plan.id && (
+                             <div className="flex items-center gap-1 ml-2">
+                               <button onClick={(e) => startEditPlan(plan, e)} className="text-gray-400 hover:text-brand-600 transition-colors p-1">
+                                  <Edit2 size={12} />
+                               </button>
+                               <button onClick={(e) => handleDeletePlan(plan.id, e)} className="text-gray-400 hover:text-red-500 transition-colors p-1">
+                                  <Trash2 size={12} />
+                               </button>
+                             </div>
+                         )}
+                     </div>
                    </div>
                 </div>
                 <p className="text-xs text-gray-500 leading-relaxed mb-4">
@@ -479,7 +603,7 @@ Generate a structured financial plan. The output must match the JSON schema expl
       {/* Add Goal Modal */}
       {isAddingGoal && (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4">
-              <div className="bg-white w-full max-w-sm rounded-[32px] sm:rounded-[32px] rounded-b-none p-6 shadow-2xl animate-in slide-in-from-bottom-full max-h-[85vh] overflow-y-auto pb-12 sm:pb-6">
+              <div className="bg-white w-full max-w-sm rounded-[32px] sm:rounded-[32px] rounded-b-none p-6 shadow-2xl animate-in slide-in-from-bottom-full max-h-[85vh] overflow-y-auto pb-32 sm:pb-12">
                   <div className="flex justify-between items-center mb-6">
                       <h2 className="text-xl font-bold text-gray-900">{editingGoalId ? 'Edit Savings Goal' : 'New Savings Goal'}</h2>
                       <button onClick={() => { setIsAddingGoal(false); setEditingGoalId(null); }} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600">
@@ -515,6 +639,65 @@ Generate a structured financial plan. The output must match the JSON schema expl
                       </div>
                       <button type="submit" className="w-full bg-brand-600 text-white font-bold py-4 rounded-2xl mt-4 active:scale-95 transition-transform">
                           {editingGoalId ? 'Save Changes' : 'Create Goal'}
+                      </button>
+                  </form>
+              </div>
+          </div>
+      )}
+
+      {/* Add Plan Modal */}
+      {isAddingPlan && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4">
+              <div className="bg-white w-full max-w-sm rounded-[32px] sm:rounded-[32px] rounded-b-none p-6 shadow-2xl animate-in slide-in-from-bottom-full max-h-[85vh] overflow-y-auto pb-32 sm:pb-12">
+                  <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-xl font-bold text-gray-900">{editingPlanId ? 'Edit Strategy Plan' : 'New Strategy Plan'}</h2>
+                      <button onClick={() => { setIsAddingPlan(false); setEditingPlanId(null); }} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600">
+                          <X size={18} />
+                      </button>
+                  </div>
+                  <form onSubmit={handleManualAddPlan} className="space-y-4">
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Plan Title</label>
+                          <input type="text" required value={newPlan.title} onChange={e => setNewPlan({...newPlan, title: e.target.value})} className="w-full bg-gray-50 text-gray-900 px-4 py-3 rounded-2xl text-sm font-medium border border-gray-100 focus:outline-none focus:border-brand-500" placeholder="E.g. Pay off Student Loans" />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Description</label>
+                          <textarea required value={newPlan.description} onChange={e => setNewPlan({...newPlan, description: e.target.value})} className="w-full bg-gray-50 text-gray-900 px-4 py-3 rounded-2xl text-sm font-medium border border-gray-100 focus:outline-none focus:border-brand-500 min-h-[80px]" placeholder="Briefly describe the strategy..." />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Target Date (Optional)</label>
+                          <input type="date" value={newPlan.deadline} onChange={e => setNewPlan({...newPlan, deadline: e.target.value})} className="w-full bg-gray-50 text-gray-900 px-4 py-3 rounded-2xl text-sm font-medium border border-gray-100 focus:outline-none focus:border-brand-500" />
+                      </div>
+                      <div className="pt-2 border-t border-gray-100">
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Tasks / Steps</label>
+                          <div className="space-y-3 mb-4">
+                              {newPlan.tasks.map((task, index) => (
+                                  <div key={index} className="flex items-center gap-2">
+                                      <div className="w-6 h-6 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                          {index + 1}
+                                      </div>
+                                      <input 
+                                          type="text" 
+                                          required={index === 0}
+                                          value={task} 
+                                          onChange={e => handleTaskTitleChange(index, e.target.value)} 
+                                          className="flex-1 bg-gray-50 text-gray-900 px-3 py-2 rounded-xl text-sm border border-gray-100 focus:outline-none focus:border-brand-500" 
+                                          placeholder={`Step ${index + 1}`} 
+                                      />
+                                      {newPlan.tasks.length > 1 && (
+                                          <button type="button" onClick={() => handleRemovePlanTask(index)} className="p-2 text-gray-400 hover:text-red-500 flex-shrink-0 transition-colors">
+                                              <Trash2 size={16} />
+                                          </button>
+                                      )}
+                                  </div>
+                              ))}
+                          </div>
+                          <button type="button" onClick={handleAddPlanTask} className="flex items-center gap-2 text-sm font-bold text-brand-600 hover:text-brand-700 transition-colors px-2 py-1">
+                              <Plus size={16} /> Add Another Step
+                          </button>
+                      </div>
+                      <button type="submit" className="w-full bg-brand-600 text-white font-bold py-4 rounded-2xl mt-6 active:scale-95 transition-transform">
+                          {editingPlanId ? 'Save Changes' : 'Save Plan'}
                       </button>
                   </form>
               </div>
