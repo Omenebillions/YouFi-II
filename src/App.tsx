@@ -23,6 +23,7 @@ import BusinessSaleList from './pages/BusinessSaleList';
 import BusinessTransactionList from './pages/BusinessTransactionList';
 import BusinessDebtList from './pages/BusinessDebtList';
 import UpcomingPayments from './pages/UpcomingPayments';
+import TrashBin from './pages/TrashBin';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="business/:businessId/transactions/:type" element={<BusinessTransactionList />} />
             <Route path="business/:businessId/debts" element={<BusinessDebtList />} />
             <Route path="upcoming-payments" element={<UpcomingPayments />} />
+            <Route path="trash" element={<TrashBin />} />
           </Route>
         </Routes>
       </BrowserRouter>

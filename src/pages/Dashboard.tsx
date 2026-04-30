@@ -506,7 +506,7 @@ export default function Dashboard() {
       <div>
          <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-gray-900">Recent Transaction</h2>
-          <span onClick={() => window.location.href = '#history/all'} className="text-xs font-semibold text-brand-600 bg-brand-50 px-3 py-1.5 rounded-full cursor-pointer hover:bg-brand-100 transition-colors">View All</span>
+          <span onClick={() => navigate('/history/all')} className="text-xs font-semibold text-brand-600 bg-brand-50 px-3 py-1.5 rounded-full cursor-pointer hover:bg-brand-100 transition-colors">View All</span>
         </div>
         
         <div className="flex flex-col gap-4">

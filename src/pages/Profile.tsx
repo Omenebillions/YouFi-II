@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut, User, DollarSign, Save } from 'lucide-react';
+import { LogOut, User, DollarSign, Save, Trash2 } from 'lucide-react';
 import { updateDoc, doc } from 'firebase/firestore';
 import { collections } from '../services/db';
 import { db } from '../services/firebase';
 import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
+import { useNavigate } from 'react-router-dom';
 
 const CURRENCIES = [
   { code: 'USD', symbol: '$', label: 'US Dollar (USD)' },
@@ -16,6 +17,7 @@ const CURRENCIES = [
 
 export default function Profile() {
   const { userProfile, user, logout } = useAuth();
+  const navigate = useNavigate();
   const [income, setIncome] = useState(userProfile?.income?.toString() || '0');
   const [currency, setCurrency] = useState(userProfile?.currency || 'USD');
   const [loading, setLoading] = useState(false);
@@ -107,6 +109,23 @@ export default function Profile() {
         </div>
       </div>
       
+      {/* System Settings */}
+      <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-6">
+        <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+            System
+        </h3>
+        
+        <button 
+          onClick={() => navigate('/trash')}
+          className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl py-4 font-bold flex items-center justify-between px-4 hover:bg-gray-100 transition-colors"
+        >
+          <div className="flex items-center gap-2 text-gray-700">
+            <Trash2 size={20} />
+            View Trash Bin
+          </div>
+        </button>
+      </div>
+
       {/* Logout */}
       <button 
         onClick={logout}

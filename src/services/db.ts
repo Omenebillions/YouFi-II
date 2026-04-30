@@ -12,7 +12,23 @@ export const collections = {
   budgets: 'budgets',
   savingsGoals: 'savingsGoals',
   financialPlans: 'financialPlans',
-  aiInsights: 'aiInsights'
+  aiInsights: 'aiInsights',
+  trash: 'trash'
+};
+
+export const moveToTrash = async (collectionName: string, originalId: string, data: any) => {
+  try {
+    const trashRef = doc(collection(db, collections.trash));
+    await setDoc(trashRef, {
+      userId: auth.currentUser?.uid,
+      collectionName,
+      originalId,
+      data,
+      createdAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error moving to trash:", error);
+  }
 };
 
 export const fetchTransactions = async (userId: string): Promise<any[]> => {

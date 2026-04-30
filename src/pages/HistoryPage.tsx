@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash2, Edit2, Check, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchTransactions, deleteTransaction, updateTransaction } from '../services/db';
+import { fetchTransactions, deleteTransaction, updateTransaction, moveToTrash } from '../services/db';
 import { formatCurrency } from '../lib/currency';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 export default function HistoryPage() {
   const { type } = useParams<{ type: string }>();
@@ -13,8 +14,11 @@ export default function HistoryPage() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [txToDelete, setTxToDelete] = useState<any>(null);
+
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ amount: '', category: '', note: '' });
+  const [editForm, setEditForm] = useState({ amount: '', category: '', note: '', date: '', type: 'expense' });
 
   const currencyCode = userProfile?.currency || 'USD';
 
@@ -53,11 +57,14 @@ export default function HistoryPage() {
     loadData();
   }, [user, type]);
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this record?")) {
-      await deleteTransaction(id);
-      loadData();
-    }
+  const handleDelete = async () => {
+    if (!txToDelete) return;
+    const tx = txToDelete;
+    await moveToTrash('transactions', tx.id, tx);
+    await deleteTransaction(tx.id);
+    setTxToDelete(null);
+    setShowDeleteModal(false);
+    loadData();
   };
 
   const startEdit = (tx: any) => {
@@ -65,7 +72,9 @@ export default function HistoryPage() {
     setEditForm({
       amount: tx.amount.toString(),
       category: tx.category,
-      note: tx.note || ''
+      note: tx.note || '',
+      date: tx.date || new Date().toISOString().split('T')[0],
+      type: tx.type || 'expense'
     });
   };
 
@@ -76,10 +85,11 @@ export default function HistoryPage() {
   const saveEdit = async (id: string, originalTx: any) => {
     if (!editForm.amount || !editForm.category) return;
     await updateTransaction(id, {
-      ...originalTx,
       amount: parseFloat(editForm.amount),
       category: editForm.category,
-      note: editForm.note
+      note: editForm.note,
+      date: editForm.date,
+      type: editForm.type
     });
     setEditingId(null);
     loadData();
@@ -125,6 +135,14 @@ export default function HistoryPage() {
                 {editingId === tx.id ? (
                    <div className="flex flex-col gap-3">
                       <div className="flex gap-2">
+                        <select
+                          value={editForm.type}
+                          onChange={(e) => setEditForm({...editForm, type: e.target.value})}
+                          className="p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500"
+                        >
+                          <option value="income">Income</option>
+                          <option value="expense">Expense</option>
+                        </select>
                         <input 
                           type="number"
                           value={editForm.amount}
@@ -140,13 +158,21 @@ export default function HistoryPage() {
                           placeholder="Category"
                         />
                       </div>
-                      <input 
-                        type="text"
-                        value={editForm.note}
-                        onChange={(e) => setEditForm({...editForm, note: e.target.value})}
-                        className="w-full p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500"
-                        placeholder="Note"
-                      />
+                      <div className="flex gap-2">
+                        <input 
+                          type="date"
+                          value={editForm.date}
+                          onChange={(e) => setEditForm({...editForm, date: e.target.value})}
+                          className="p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500"
+                        />
+                        <input 
+                          type="text"
+                          value={editForm.note}
+                          onChange={(e) => setEditForm({...editForm, note: e.target.value})}
+                          className="flex-1 p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500"
+                          placeholder="Note"
+                        />
+                      </div>
                       <div className="flex justify-end gap-2 mt-1">
                         <button onClick={cancelEdit} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
                            <X size={16} />
@@ -179,7 +205,7 @@ export default function HistoryPage() {
                         <Edit2 size={16} />
                       </button>
                       <button 
-                        onClick={() => handleDelete(tx.id)}
+                        onClick={() => { setTxToDelete(tx); setShowDeleteModal(true); }}
                         className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                       >
                         <Trash2 size={16} />
@@ -192,6 +218,13 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
+
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => { setShowDeleteModal(false); setTxToDelete(null); }}
+        onConfirm={handleDelete}
+        itemName={txToDelete ? `${txToDelete.category} - ${formatCurrency(txToDelete.amount, currencyCode)}` : undefined}
+      />
     </div>
   );
 }
