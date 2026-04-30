@@ -9,6 +9,8 @@ import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
+import { moveToTrash } from '../services/db';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 export default function BusinessProductList() {
   const { businessId } = useParams();
@@ -17,6 +19,8 @@ export default function BusinessProductList() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<any>(null);
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [formData, setFormData] = useState({ name: '', costPrice: '', sellingPrice: '', stock: '', isService: false });
 
@@ -102,11 +106,16 @@ export default function BusinessProductList() {
     setShowModal(true);
   };
 
-  const handleDeleteProduct = async (id: string) => {
+  const handleDeleteProduct = async () => {
+    if (!productToDelete) return;
+    const id = productToDelete.id;
     setLoading(true);
     try {
+      await moveToTrash('products', id, productToDelete);
       await deleteDoc(doc(db, 'products', id));
       fetchProducts();
+      setShowDeleteModal(false);
+      setProductToDelete(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `products/${id}`);
     } finally {
@@ -177,7 +186,7 @@ export default function BusinessProductList() {
                     <button onClick={() => handleEdit(p)} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-brand-600 transition-colors">
                         <Edit2 size={16} />
                     </button>
-                    <button onClick={() => handleDeleteProduct(p.id)} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors">
+                    <button onClick={() => { setProductToDelete(p); setShowDeleteModal(true); }} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors">
                         <Trash2 size={18} />
                     </button>
                  </div>
@@ -185,6 +194,14 @@ export default function BusinessProductList() {
            ))}
         </div>
       )}
+
+      {/* Delete Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => { setShowDeleteModal(false); setProductToDelete(null); }}
+        onConfirm={handleDeleteProduct}
+        itemName={productToDelete?.name}
+      />
 
       {/* Product Modal */}
       <AnimatePresence>

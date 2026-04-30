@@ -3,16 +3,19 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, Trash2, 
   ShoppingBag, Search, Calendar,
-  TrendingUp, TrendingDown, ShoppingCart, Edit2
+  TrendingUp, TrendingDown, ShoppingCart, Edit2, X
 } from 'lucide-react';
 import { 
   collection, query, where, getDocs, 
-  addDoc, serverTimestamp, deleteDoc, 
+  addDoc, serverTimestamp, deleteDoc, updateDoc,
   doc, orderBy, limit, writeBatch, increment
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
+import { moveToTrash } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 export default function BusinessSaleList() {
   const { businessId } = useParams();
@@ -22,6 +25,10 @@ export default function BusinessSaleList() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [saleToDelete, setSaleToDelete] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [editingSale, setEditingSale] = useState<any>(null);
   const [formData, setFormData] = useState({ 
     productId: '', 
@@ -60,7 +67,7 @@ export default function BusinessSaleList() {
       const prodSnapshot = await getDocs(prodQ);
       setProducts(prodSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (error) {
-      console.error("Error fetching sales data:", error);
+      handleFirestoreError(error, OperationType.GET, 'sales');
     } finally {
       setLoading(false);
     }
@@ -157,7 +164,7 @@ export default function BusinessSaleList() {
       setFormData({ productId: '', quantity: '1', unitPrice: '', date: new Date().toISOString().split('T')[0] });
       fetchSalesAndProducts();
     } catch (error) {
-      console.error("Error saving sale:", error);
+      handleFirestoreError(error, OperationType.WRITE, 'sales');
     } finally {
       setLoading(false);
     }
@@ -180,33 +187,49 @@ export default function BusinessSaleList() {
     setShowModal(true);
   };
 
-  const handleDeleteSale = async (sale: any) => {
-    if (!window.confirm("Delete this sale? This will restore stock and revert business balance.")) return;
-    
+  const handleDeleteSale = async () => {
+    if (!saleToDelete) return;
+    const sale = saleToDelete;
     setLoading(true);
     try {
-      const batch = writeBatch(db);
-      
+      // Move to trash first
+      await moveToTrash('sales', sale.id, sale);
+
       // Revert stock
       const product = products.find(p => p.id === sale.productId);
-      if (!product || (product && !product.isService)) {
-         batch.update(doc(db, 'products', sale.productId), {
-           stock: increment(sale.quantity)
-         });
+      if (product && !product.isService) {
+         try {
+           await updateDoc(doc(db, 'products', sale.productId), {
+             stock: increment(Number(sale.quantity || 1))
+           });
+         } catch (err) {
+           console.error("Stock update failed", err);
+           throw err;
+         }
       }
       
       // Revert balance
-      batch.update(doc(db, 'businesses', businessId!), {
-        balance: increment(-sale.totalPrice)
-      });
+      try {
+        await updateDoc(doc(db, 'businesses', businessId!), {
+          balance: increment(-Number(sale.totalPrice || 0))
+        });
+      } catch (err) {
+        console.error("Balance update failed", err);
+        throw err;
+      }
 
       // Delete record
-      batch.delete(doc(db, 'sales', sale.id));
+      try {
+        await deleteDoc(doc(db, 'sales', sale.id));
+      } catch (err) {
+        console.error("Sale delete failed", err);
+        throw err;
+      }
 
-      await batch.commit();
       fetchSalesAndProducts();
     } catch (error) {
-      console.error("Error deleting sale:", error);
+      alert("Could not delete sale. Check error in console.");
+      handleFirestoreError(error, OperationType.DELETE, `sales/${sale.id}`);
     } finally {
       setLoading(false);
     }
@@ -216,10 +239,51 @@ export default function BusinessSaleList() {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(val);
   };
 
+  const getTotals = () => {
+    const today = new Date();
+    const todayStr = new Date(today.getTime() - (today.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    const currentDay = today.getDay();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - currentDay);
+    const startOfWeekStr = new Date(startOfWeek.getTime() - (startOfWeek.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    const startOfQuarter = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1);
+    const startOfQuarterStr = new Date(startOfQuarter.getTime() - (startOfQuarter.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    const startOfYear = new Date(today.getFullYear(), 0, 1);
+    const startOfYearStr = new Date(startOfYear.getTime() - (startOfYear.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    let tToday = 0;
+    let tWeek = 0;
+    let tQuarter = 0;
+    let tYear = 0;
+
+    sales.forEach(s => {
+      const d = s.date;
+      if (d === todayStr) tToday += s.totalPrice;
+      if (d >= startOfWeekStr && d <= todayStr) tWeek += s.totalPrice;
+      if (d >= startOfQuarterStr && d <= todayStr) tQuarter += s.totalPrice;
+      if (d >= startOfYearStr && d <= todayStr) tYear += s.totalPrice;
+    });
+
+    return { today: tToday, week: tWeek, quarter: tQuarter, year: tYear };
+  };
+
+  const totals = getTotals();
+
+  const filteredSales = sales.filter(s => {
+     const matchesSearch = s.productName?.toLowerCase().includes(searchTerm.toLowerCase());
+     const matchesDate = dateFilter ? s.date === dateFilter : true;
+     return matchesSearch && matchesDate;
+  });
+
+  const searchTotal = filteredSales.reduce((acc, s) => acc + (s.totalPrice || 0), 0);
+
   return (
     <div className="flex flex-col tracking-tight pt-4 pb-24">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8 pr-12">
+      <div className="flex items-center justify-between mb-6 pr-12">
         <button onClick={() => navigate(`/business/${businessId}`)} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
           <ArrowLeft size={20} />
         </button>
@@ -227,33 +291,88 @@ export default function BusinessSaleList() {
         <div className="w-4"></div>
       </div>
 
-      <div className="flex gap-3 mb-6">
-         <div className="flex-1 bg-white border border-gray-100 rounded-2xl flex items-center px-4 shadow-sm">
-            <Search size={18} className="text-gray-400" />
-            <input 
-              className="w-full bg-transparent border-none p-3 text-sm focus:ring-0" 
-              placeholder="Search sales..." 
-            />
+      {/* Summary Totals */}
+      {(searchTerm || dateFilter) ? (
+         <div className="bg-brand-50 border border-brand-100 p-5 rounded-3xl mb-6 shadow-sm">
+            <p className="text-xs font-bold text-brand-600 uppercase mb-2">Search Results Total</p>
+            <h3 className="text-2xl font-black text-brand-600">
+               {formatCurrency(searchTotal)}
+            </h3>
          </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+             <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Today</p>
+             <h3 className="text-lg font-black text-brand-600">{formatCurrency(totals.today)}</h3>
+          </div>
+          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+             <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">This Week</p>
+             <h3 className="text-lg font-black text-brand-600">{formatCurrency(totals.week)}</h3>
+          </div>
+          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+             <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">This Quarter</p>
+             <h3 className="text-lg font-black text-brand-600">{formatCurrency(totals.quarter)}</h3>
+          </div>
+          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+             <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">This Year</p>
+             <h3 className="text-lg font-black text-brand-600">{formatCurrency(totals.year)}</h3>
+          </div>
+        </div>
+      )}
+
+      {/* Search Filters */}
+      <div className="flex gap-2 mb-6">
+         <div className="flex-1 bg-white border border-gray-100 rounded-2xl flex items-center px-4 shadow-sm">
+            <Search className="text-gray-400 w-5 h-5 mr-2 shrink-0" />
+            <input 
+               type="text" 
+               placeholder="Search..." 
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               className="w-full py-3 bg-transparent text-sm font-medium outline-none placeholder-gray-400 flex-1 min-w-0"
+            />
+            {searchTerm && (
+               <button onClick={() => setSearchTerm('')} className="p-1 shrink-0">
+                  <X size={16} className="text-gray-400" />
+               </button>
+            )}
+         </div>
+         <div className="bg-white border border-gray-100 rounded-2xl flex items-center px-3 shadow-sm relative shrink-0">
+            <Calendar className="text-gray-400 w-5 h-5" />
+            <input 
+               type="date" 
+               value={dateFilter}
+               onChange={(e) => setDateFilter(e.target.value)}
+               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
+            {dateFilter && (
+               <button onClick={() => setDateFilter('')} className="p-1 relative ml-1 z-10">
+                  <X size={16} className="text-gray-400" />
+               </button>
+            )}
+         </div>
+      </div>
+
+      <div className="flex justify-end mb-6">
          <button onClick={handleAddClick} className="w-12 h-12 bg-gray-900 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-90 transition-all">
             <Plus size={24} />
          </button>
       </div>
 
-      {loading && sales.length === 0 ? (
+      {loading && filteredSales.length === 0 ? (
         <div className="py-20 text-center text-gray-400">Loading sales...</div>
-      ) : sales.length === 0 ? (
+      ) : filteredSales.length === 0 ? (
         <div className="bg-white rounded-3xl p-10 text-center border border-gray-100 shadow-sm">
            <div className="w-16 h-16 bg-brand-50 rounded-full flex items-center justify-center text-brand-600 mx-auto mb-6">
               <ShoppingBag size={32} />
            </div>
            <h2 className="text-lg font-bold text-gray-900 mb-2">No sales recorded</h2>
            <p className="text-xs text-gray-500 mb-8 max-w-xs mx-auto">Start recording your sales to see how your business is performing.</p>
-           <button onClick={handleAddClick} className="bg-brand-600 text-white font-bold py-3 px-6 rounded-xl text-sm">Record First Sale</button>
+           {!searchTerm && !dateFilter && <button onClick={handleAddClick} className="bg-brand-600 text-white font-bold py-3 px-6 rounded-xl text-sm">Record First Sale</button>}
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-           {sales.map((s) => (
+           {filteredSales.map((s) => (
               <div key={s.id} className="bg-white p-5 rounded-3xl border border-gray-50 flex items-center justify-between shadow-sm">
                  <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-brand-50 rounded-2xl flex items-center justify-center text-brand-600 font-bold text-xs">
@@ -281,7 +400,7 @@ export default function BusinessSaleList() {
                     <button onClick={() => handleEdit(s)} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-brand-600 transition-colors">
                         <Edit2 size={16} />
                     </button>
-                    <button onClick={() => handleDeleteSale(s)} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors">
+                    <button onClick={() => { setSaleToDelete(s); setShowDeleteModal(true); }} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors">
                         <Trash2 size={18} />
                     </button>
                  </div>
@@ -291,6 +410,15 @@ export default function BusinessSaleList() {
       )}
 
       {/* Sale Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => { setShowDeleteModal(false); setSaleToDelete(null); }}
+        onConfirm={handleDeleteSale}
+        title="Delete Sale"
+        message="Are you sure you want to delete this sale? This will revert business stock and balance, and the record will be moved to the Trash Bin."
+        itemName={saleToDelete ? `${saleToDelete.quantity}x ${saleToDelete.productName}` : undefined}
+      />
+
       <AnimatePresence>
         {showModal && (
           <>

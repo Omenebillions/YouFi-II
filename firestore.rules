@@ -239,14 +239,15 @@ service cloud.firestore {
 
     // --- Product Validation ---
     function isValidProduct(data) {
-      return data.keys().hasAll(['businessId', 'userId', 'name', 'costPrice', 'sellingPrice', 'stock', 'isService', 'createdAt']) &&
+      return data.keys().hasAll(['businessId', 'userId', 'name', 'createdAt']) &&
              data.businessId is string && data.businessId.size() > 0 && data.businessId.size() <= 128 &&
              data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
-             data.costPrice is number &&
-             data.sellingPrice is number &&
-             data.stock is number &&
-             data.isService is bool &&
+             (!('costPrice' in data) || data.costPrice is number) &&
+             (!('sellingPrice' in data) || data.sellingPrice is number) &&
+             (!('price' in data) || data.price is number) &&
+             (!('stock' in data) || data.stock is number) &&
+             (!('isService' in data) || data.isService is bool) &&
              data.createdAt is timestamp;
     }
 
@@ -263,7 +264,7 @@ service cloud.firestore {
                     isValidProduct(incoming()) &&
                     incoming().userId == existing().userId &&
                     incoming().createdAt == existing().createdAt &&
-                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'costPrice', 'sellingPrice', 'stock', 'isService']);
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'costPrice', 'sellingPrice', 'price', 'stock', 'isService']);
       allow delete: if isVerified() && isValidId(productId) && existing().userId == request.auth.uid;
     }
 
@@ -349,6 +350,26 @@ service cloud.firestore {
                     incoming().createdAt == existing().createdAt &&
                     incoming().diff(existing()).affectedKeys().hasOnly(['title', 'amount', 'dueDate', 'isRecurring', 'frequency']);
       allow delete: if isVerified() && isValidId(paymentId) && existing().userId == request.auth.uid;
+    }
+    // --- Trash Validation ---
+    function isValidTrash(data) {
+      return data.keys().hasAll(['userId', 'collectionName', 'originalId', 'data', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.collectionName is string && data.collectionName.size() > 0 && data.collectionName.size() <= 100 &&
+             data.originalId is string && data.originalId.size() > 0 && data.originalId.size() <= 128 &&
+             data.data is map &&
+             data.createdAt is timestamp;
+    }
+
+    match /trash/{trashId} {
+      allow get: if isVerified() && isValidId(trashId) && existing().userId == request.auth.uid;
+      allow list: if isVerified() && existing().userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(trashId) &&
+                    isValidTrash(incoming()) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().createdAt == request.time;
+      allow delete: if isVerified() && isValidId(trashId) && existing().userId == request.auth.uid;
+      allow update: if false;
     }
   }
 }

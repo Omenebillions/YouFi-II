@@ -9,6 +9,7 @@ import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 export default function BusinessDebtList() {
   const { businessId } = useParams();
@@ -17,6 +18,8 @@ export default function BusinessDebtList() {
   const [debts, setDebts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [debtToDelete, setDebtToDelete] = useState<any>(null);
   const [editingDebt, setEditingDebt] = useState<any>(null);
   const [formData, setFormData] = useState({ lender: '', amount: '', dueDate: '', status: 'unpaid' });
 
@@ -79,13 +82,16 @@ export default function BusinessDebtList() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async () => {
+    if (!debtToDelete) return;
     setLoading(true);
     try {
-      await deleteDoc(doc(db, 'businessDebts', id));
+      await deleteDoc(doc(db, 'businessDebts', debtToDelete.id));
+      setShowDeleteModal(false);
+      setDebtToDelete(null);
       fetchDebts();
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `businessDebts/${id}`);
+      handleFirestoreError(err, OperationType.DELETE, `businessDebts/${debtToDelete.id}`);
     } finally {
       setLoading(false);
     }
@@ -122,10 +128,50 @@ export default function BusinessDebtList() {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(val);
   };
 
+  const getTotals = () => {
+    const today = new Date();
+    const todayStr = new Date(today.getTime() - (today.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    const currentDay = today.getDay();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - currentDay);
+    const startOfWeekStr = new Date(startOfWeek.getTime() - (startOfWeek.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    const startOfQuarter = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1);
+    const startOfQuarterStr = new Date(startOfQuarter.getTime() - (startOfQuarter.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    const startOfYear = new Date(today.getFullYear(), 0, 1);
+    const startOfYearStr = new Date(startOfYear.getTime() - (startOfYear.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    let tToday = 0;
+    let tWeek = 0;
+    let tQuarter = 0;
+    let tYear = 0;
+
+    debts.forEach(d => {
+      // Use createdAt if available, otherwise just count it generally or skip
+      let dStr = '';
+      if (d.createdAt && d.createdAt.toDate) {
+         dStr = new Date(d.createdAt.toDate().getTime() - (d.createdAt.toDate().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      } else {
+         return; // If no date, skip in time-based totals
+      }
+
+      if (dStr === todayStr) tToday += d.amount;
+      if (dStr >= startOfWeekStr && dStr <= todayStr) tWeek += d.amount;
+      if (dStr >= startOfQuarterStr && dStr <= todayStr) tQuarter += d.amount;
+      if (dStr >= startOfYearStr && dStr <= todayStr) tYear += d.amount;
+    });
+
+    return { today: tToday, week: tWeek, quarter: tQuarter, year: tYear };
+  };
+
+  const totals = getTotals();
+
   return (
     <div className="flex flex-col tracking-tight pt-4 pb-24">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8 pr-12">
+      <div className="flex items-center justify-between mb-6 pr-12">
         <button onClick={() => navigate(`/business/${businessId}`)} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
           <ArrowLeft size={20} />
         </button>
@@ -133,6 +179,26 @@ export default function BusinessDebtList() {
            <CreditCard className="text-red-500" /> Business Debts
         </h1>
         <div className="w-4"></div>
+      </div>
+
+      {/* Summary Totals */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+           <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Today</p>
+           <h3 className="text-lg font-black text-red-500">{formatCurrency(totals.today)}</h3>
+        </div>
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+           <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">This Week</p>
+           <h3 className="text-lg font-black text-red-500">{formatCurrency(totals.week)}</h3>
+        </div>
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+           <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">This Quarter</p>
+           <h3 className="text-lg font-black text-red-500">{formatCurrency(totals.quarter)}</h3>
+        </div>
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+           <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">This Year</p>
+           <h3 className="text-lg font-black text-red-500">{formatCurrency(totals.year)}</h3>
+        </div>
       </div>
 
       <div className="flex gap-3 mb-6">
@@ -190,7 +256,7 @@ export default function BusinessDebtList() {
                        <button onClick={() => handleEdit(d)} className="p-1 text-gray-400 hover:text-brand-600 transition-colors">
                           <Edit2 size={16} />
                        </button>
-                       <button onClick={() => handleDelete(d.id)} className="p-1 text-gray-300 hover:text-red-500 transition-colors">
+                       <button onClick={() => { setDebtToDelete(d); setShowDeleteModal(true); }} className="p-1 text-gray-300 hover:text-red-500 transition-colors">
                           <Trash2 size={18} />
                        </button>
                     </div>
@@ -199,6 +265,14 @@ export default function BusinessDebtList() {
            ))}
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => { setShowDeleteModal(false); setDebtToDelete(null); }}
+        onConfirm={handleDelete}
+        itemName={debtToDelete ? debtToDelete.lender : undefined}
+      />
 
       {/* Debt Modal */}
       <AnimatePresence>

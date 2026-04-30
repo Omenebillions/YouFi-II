@@ -9,6 +9,7 @@ import { doc, onSnapshot, collection, query, where, orderBy, limit, addDoc, serv
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function BusinessDashboard() {
   const { businessId } = useParams();
@@ -16,7 +17,7 @@ export default function BusinessDashboard() {
   const { user, userProfile } = useAuth();
   const [business, setBusiness] = useState<any>(null);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
-  const [stats, setStats] = useState({ revenue: 0, expenses: 0, products: 0, sales: 0, debts: 0, salesProfit: 0 });
+  const [stats, setStats] = useState({ revenue: 0, expenses: 0, products: 0, sales: 0, debts: 0, salesProfit: 0, chartData: [] as any[] });
   const [loading, setLoading] = useState(true);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferData, setTransferData] = useState({ amount: '', type: 'to-personal', note: '' });
@@ -40,12 +41,31 @@ export default function BusinessDashboard() {
     const unsubscribeTx = onSnapshot(qTx, (snapshot) => {
       let txRev = 0;
       let txExp = 0;
+      const chartMap: Record<string, any> = {};
+
       snapshot.docs.forEach(doc => {
         const data = doc.data();
         if (data.type === 'income') txRev += data.amount;
         else txExp += data.amount;
+
+        const dateStr = data.date;
+        if (dateStr) {
+           const monthStr = new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+           // sorting key YYYY-MM
+           const sortKey = dateStr.substring(0, 7); 
+           if (!chartMap[sortKey]) {
+              chartMap[sortKey] = { name: monthStr, sortKey, income: 0, expense: 0 };
+           }
+           if (data.type === 'income') chartMap[sortKey].income += data.amount;
+           else chartMap[sortKey].expense += data.amount;
+        }
       });
-      setStats(prev => ({ ...prev, revenue: txRev, expenses: txExp }));
+      
+      const chartData = Object.values(chartMap)
+         .sort((a: any, b: any) => a.sortKey.localeCompare(b.sortKey))
+         .slice(-6); // last 6 months
+
+      setStats(prev => ({ ...prev, revenue: txRev, expenses: txExp, chartData }));
       setLoading(false);
     });
 
@@ -143,7 +163,7 @@ export default function BusinessDashboard() {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(val);
   };
 
-  const netProfit = stats.salesProfit - stats.expenses;
+  const netProfit = stats.salesProfit + stats.revenue - stats.expenses;
 
   if (!business && !loading) return <div className="p-10 text-center">Business not found.</div>;
 
@@ -214,35 +234,41 @@ export default function BusinessDashboard() {
       </div>
 
       {/* SME Tools Section */}
-      <div className="grid grid-cols-4 gap-3 mb-8">
-         <div onClick={() => navigate(`/business/${businessId}/sales`)} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
-            <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center text-green-600 mx-auto mb-2">
-               <ShoppingCart size={20} />
+      <div className="grid grid-cols-5 gap-2 mb-8">
+         <div onClick={() => navigate(`/business/${businessId}/sales`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
+            <div className="w-8 h-8 bg-green-50 rounded-xl flex items-center justify-center text-green-600 mx-auto mb-2">
+               <ShoppingCart size={16} />
             </div>
-            <p className="text-[9px] font-bold text-gray-400 uppercase">Sales</p>
+            <p className="text-[8px] font-bold text-gray-400 uppercase">Sales</p>
          </div>
-         <div onClick={() => navigate(`/business/${businessId}/products`)} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
-            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 mx-auto mb-2">
-               <Package size={20} />
+         <div onClick={() => navigate(`/business/${businessId}/products`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
+            <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 mx-auto mb-2">
+               <Package size={16} />
             </div>
-            <p className="text-[9px] font-bold text-gray-400 uppercase">Items</p>
+            <p className="text-[8px] font-bold text-gray-400 uppercase">Items</p>
          </div>
-         <div onClick={() => navigate(`/business/${businessId}/transactions/expense`)} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
-            <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-500 mx-auto mb-2">
-               <TrendingDown size={20} />
+         <div onClick={() => navigate(`/business/${businessId}/transactions/income`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
+            <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 mx-auto mb-2">
+               <TrendingUp size={16} />
             </div>
-            <p className="text-[9px] font-bold text-gray-400 uppercase">Expenses</p>
+            <p className="text-[8px] font-bold text-gray-400 uppercase">Income</p>
          </div>
-         <div onClick={() => navigate(`/business/${businessId}/debts`)} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
-            <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600 mx-auto mb-2">
-               <CreditCard size={20} />
+         <div onClick={() => navigate(`/business/${businessId}/transactions/expense`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
+            <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center text-red-500 mx-auto mb-2">
+               <TrendingDown size={16} />
             </div>
-            <p className="text-[9px] font-bold text-gray-400 uppercase">Debts</p>
+            <p className="text-[8px] font-bold text-gray-400 uppercase">Expenses</p>
+         </div>
+         <div onClick={() => navigate(`/business/${businessId}/debts`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
+            <div className="w-8 h-8 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600 mx-auto mb-2">
+               <CreditCard size={16} />
+            </div>
+            <p className="text-[8px] font-bold text-gray-400 uppercase">Debts</p>
          </div>
       </div>
 
       {/* Profit Analysis */}
-      <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm mb-8">
+      <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm mb-6">
          <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-gray-900 flex items-center gap-2">
                <PieChart size={18} className="text-brand-600" /> Net Profit
@@ -252,7 +278,7 @@ export default function BusinessDashboard() {
             </span>
          </div>
          <div className="text-3xl font-extrabold text-gray-900 mb-2">{formatCurrency(netProfit)}</div>
-         <p className="text-xs text-gray-500 font-medium">calculated as Sales Margins minus Operating Expenses</p>
+         <p className="text-xs text-gray-500 font-medium">calculated as Sales Margins + Income minus Operating Expenses</p>
          {stats.debts > 0 && (
            <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
               <span className="text-xs text-red-500 font-bold flex items-center gap-1"><AlertCircle size={14} /> Outstanding Debt:</span>
@@ -261,11 +287,34 @@ export default function BusinessDashboard() {
          )}
       </div>
 
+      {/* Income vs Expenses Chart */}
+      {stats.chartData.length > 0 && (
+         <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm mb-8">
+            <h3 className="text-sm font-bold text-gray-900 mb-6">Income vs Expenses (Monthly)</h3>
+            <div className="h-48 w-full">
+               <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats.chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} dy={10} />
+                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value} />
+                     <RechartsTooltip 
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
+                        cursor={{ fill: '#F3F4F6' }}
+                        formatter={(value: number) => [formatCurrency(value), '']}
+                        labelStyle={{ color: '#4B5563', fontWeight: 'bold', marginBottom: '4px' }}
+                     />
+                     <Bar dataKey="income" name="Income" fill="#34D399" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                     <Bar dataKey="expense" name="Expense" fill="#FB7185" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  </BarChart>
+               </ResponsiveContainer>
+            </div>
+         </div>
+      )}
+
       {/* Recent Activity */}
       <div className="flex flex-col gap-5">
          <div className="flex items-center justify-between px-1">
             <h3 className="text-lg font-bold text-gray-900">Latest History</h3>
-            <span className="text-xs font-bold text-brand-600" onClick={() => navigate(`/business/${businessId}/transactions/income`)}>History</span>
+            <span className="text-xs font-bold text-brand-600" onClick={() => navigate(`/business/${businessId}/transactions/all`)}>History</span>
          </div>
 
          {recentTransactions.length === 0 ? (

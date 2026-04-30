@@ -8,7 +8,10 @@ import { collection, query, where, onSnapshot, addDoc, serverTimestamp, updateDo
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
+import { moveToTrash } from '../services/db';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 export default function BusinessTransactionList() {
   const { businessId, type } = useParams(); // type: 'income' or 'expense'
@@ -18,7 +21,11 @@ export default function BusinessTransactionList() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingTx, setEditingTx] = useState<any>(null);
-  const [formData, setFormData] = useState({ amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '' });
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [txToDelete, setTxToDelete] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+  const [formData, setFormData] = useState({ amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '', txType: type === 'all' ? 'expense' : type });
 
   const currencyCode = userProfile?.currency || 'USD';
 
@@ -26,16 +33,38 @@ export default function BusinessTransactionList() {
     if (!businessId || !type || !user) return;
 
     setLoading(true);
-    const q = query(
-      collection(db, 'businessTransactions'), 
-      where('businessId', '==', businessId), 
-      where('userId', '==', user.uid),
-      where('type', '==', type),
-      orderBy('date', 'desc')
-    );
+    let q;
+    if (type === 'all') {
+      q = query(
+        collection(db, 'businessTransactions'), 
+        where('businessId', '==', businessId), 
+        where('userId', '==', user.uid),
+        orderBy('date', 'desc')
+      );
+    } else {
+      q = query(
+        collection(db, 'businessTransactions'), 
+        where('businessId', '==', businessId), 
+        where('userId', '==', user.uid),
+        where('type', '==', type),
+        orderBy('date', 'desc')
+      );
+    }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      let results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Secondary sort by how they were entered (createdAt)
+      results.sort((a: any, b: any) => {
+         if (a.date !== b.date) {
+           return b.date.localeCompare(a.date);
+         }
+         const aTime = a.createdAt?.toMillis() || 0;
+         const bTime = b.createdAt?.toMillis() || 0;
+         return bTime - aTime;
+      });
+
+      setTransactions(results);
       setLoading(false);
     }, (err) => {
       console.error("Error fetching transactions:", err);
@@ -52,26 +81,44 @@ export default function BusinessTransactionList() {
 
     setLoading(true);
     try {
+      const actualType = formData.txType || type;
       if (editingTx) {
         const diff = amount - editingTx.amount;
         // Update Transaction
         await updateDoc(doc(db, 'businessTransactions', editingTx.id), {
-          ...formData,
-          amount
+          amount,
+          category: formData.category,
+          date: formData.date,
+          note: formData.note,
+          type: actualType
         });
 
         // Sync Balance
-        if (diff !== 0) {
+        let balanceChange = 0;
+        if (editingTx.type === actualType) {
+           balanceChange = actualType === 'income' ? diff : -diff;
+        } else {
+           // Type changed! e.g., expense -> income
+           // Revert old
+           const revertOld = editingTx.type === 'income' ? -editingTx.amount : editingTx.amount;
+           // Apply new
+           const applyNew = actualType === 'income' ? amount : -amount;
+           balanceChange = revertOld + applyNew;
+        }
+
+        if (balanceChange !== 0) {
           await updateDoc(doc(db, 'businesses', businessId), {
-            balance: increment(type === 'income' ? diff : -diff)
+            balance: increment(balanceChange)
           });
         }
       } else {
         // Record New Transaction
         await addDoc(collection(db, 'businessTransactions'), {
-          ...formData,
           amount,
-          type,
+          category: formData.category,
+          date: formData.date,
+          note: formData.note,
+          type: actualType,
           businessId,
           userId: user.uid,
           createdAt: serverTimestamp()
@@ -79,27 +126,30 @@ export default function BusinessTransactionList() {
 
         // Update Business Balance
         await updateDoc(doc(db, 'businesses', businessId), {
-          balance: increment(type === 'income' ? amount : -amount)
+          balance: increment(actualType === 'income' ? amount : -amount)
         });
       }
 
       setShowModal(false);
       setEditingTx(null);
-      setFormData({ amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '' });
+      setFormData({ amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '', txType: type === 'all' ? 'expense' : type });
     } catch (error) {
-      console.error("Error saving transaction:", error);
+      handleFirestoreError(error, OperationType.WRITE, 'businessTransactions');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (tx: any) => {
+  const handleDelete = async () => {
+    if (!txToDelete) return;
+    const tx = txToDelete;
     setLoading(true);
     try {
+      await moveToTrash('businessTransactions', tx.id, tx);
       await deleteDoc(doc(db, 'businessTransactions', tx.id));
       // Revert Balance
       await updateDoc(doc(db, 'businesses', businessId!), {
-        balance: increment(type === 'income' ? -tx.amount : tx.amount)
+        balance: increment(tx.type === 'income' ? -tx.amount : tx.amount)
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `businessTransactions/${tx.id}`);
@@ -114,14 +164,15 @@ export default function BusinessTransactionList() {
       amount: tx.amount.toString(),
       category: tx.category,
       date: tx.date,
-      note: tx.note || ''
+      note: tx.note || '',
+      txType: tx.type || (type === 'all' ? 'expense' : type)
     });
     setShowModal(true);
   };
 
   const handleAddClick = () => {
     setEditingTx(null);
-    setFormData({ amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '' });
+    setFormData({ amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '', txType: type === 'all' ? 'expense' : type });
     setShowModal(true);
   };
 
@@ -129,13 +180,91 @@ export default function BusinessTransactionList() {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(val);
   };
 
-  const title = type === 'income' ? 'Business Income' : 'Business Expenses';
-  const icon = type === 'income' ? <TrendingUp className="text-green-600" /> : <TrendingDown className="text-red-500" />;
+   const title = type === 'all' ? 'Business History' : type === 'income' ? 'Business Income' : 'Business Expenses';
+   const icon = type === 'income' ? <TrendingUp className="text-green-600" /> : type === 'expense' ? <TrendingDown className="text-red-500" /> : <Calendar className="text-brand-600" />;
+
+  const getTotals = () => {
+    const today = new Date();
+    // Use local date string instead of UTC to avoid timezone issues
+    const todayStr = new Date(today.getTime() - (today.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    // Week boundaries
+    const currentDay = today.getDay();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - currentDay);
+    const startOfWeekStr = new Date(startOfWeek.getTime() - (startOfWeek.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    // Quarter boundaries
+    const startOfQuarter = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1);
+    const startOfQuarterStr = new Date(startOfQuarter.getTime() - (startOfQuarter.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    // Year boundaries
+    const startOfYear = new Date(today.getFullYear(), 0, 1);
+    const startOfYearStr = new Date(startOfYear.getTime() - (startOfYear.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    let tToday = 0;
+    let tWeek = 0;
+    let tQuarter = 0;
+    let tYear = 0;
+
+    transactions.forEach(tx => {
+      const d = tx.date;
+      const amt = type === 'all' ? (tx.type === 'income' ? tx.amount : -tx.amount) : tx.amount;
+      if (d === todayStr) tToday += amt;
+      // We check if date is >= boundaries. Assuming dates are YYYY-MM-DD
+      if (d >= startOfWeekStr && d <= todayStr) tWeek += amt;
+      if (d >= startOfQuarterStr && d <= todayStr) tQuarter += amt;
+      if (d >= startOfYearStr && d <= todayStr) tYear += amt;
+    });
+
+    return { today: tToday, week: tWeek, quarter: tQuarter, year: tYear };
+  };
+
+  const totals = getTotals();
+
+  const filteredTransactions = transactions.filter(tx => {
+     const matchesSearch = tx.category.toLowerCase().includes(searchTerm.toLowerCase()) || (tx.note && tx.note.toLowerCase().includes(searchTerm.toLowerCase()));
+     const matchesDate = dateFilter ? tx.date === dateFilter : true;
+     return matchesSearch && matchesDate;
+  });
+
+  const getChartData = () => {
+    const chartMap: Record<string, any> = {};
+    filteredTransactions.forEach(tx => {
+       const dateStr = tx.date;
+       if (dateStr) {
+          const monthStr = new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+          const sortKey = dateStr.substring(0, 7); 
+          if (!chartMap[sortKey]) {
+             chartMap[sortKey] = { name: monthStr, sortKey, income: 0, expense: 0 };
+          }
+          if (tx.type === 'income') chartMap[sortKey].income += tx.amount;
+          else chartMap[sortKey].expense += tx.amount;
+       }
+    });
+
+    return Object.values(chartMap)
+       .sort((a: any, b: any) => a.sortKey.localeCompare(b.sortKey))
+       .slice(-6); // last 6 months
+  };
+
+  const chartData = getChartData();
+
+  const searchTotal = filteredTransactions.reduce((acc, tx) => {
+     const amt = type === 'all' ? (tx.type === 'income' ? tx.amount : -tx.amount) : tx.amount;
+     return acc + amt;
+  }, 0);
+
+  const getColorClass = (val: number, sectionType: string) => {
+     if (sectionType === 'income') return 'text-green-600';
+     if (sectionType === 'expense') return 'text-red-500';
+     return val >= 0 ? 'text-green-600' : 'text-red-500';
+  };
 
   return (
     <div className="flex flex-col tracking-tight pt-4 pb-24">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8 pr-12">
+      <div className="flex items-center justify-between mb-6 pr-12">
         <button onClick={() => navigate(`/business/${businessId}`)} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
           <ArrowLeft size={20} />
         </button>
@@ -145,14 +274,96 @@ export default function BusinessTransactionList() {
         <div className="w-4"></div>
       </div>
 
-      <div className="flex gap-3 mb-6">
-         <div className="flex-1 bg-white border border-gray-100 rounded-2xl flex items-center px-4 shadow-sm">
-            <Search size={18} className="text-gray-400" />
-            <input 
-              className="w-full bg-transparent border-none p-3 text-sm focus:ring-0" 
-              placeholder={`Search ${type}s...`} 
-            />
+      {/* Summary Totals or Search Totals */}
+      {(searchTerm || dateFilter) ? (
+         <div className="bg-brand-50 border border-brand-100 p-5 rounded-3xl mb-6 shadow-sm">
+            <p className="text-xs font-bold text-brand-600 uppercase mb-2">Search Results Total</p>
+            <h3 className={`text-2xl font-black ${getColorClass(searchTotal, type!)}`}>
+               {formatCurrency(Math.abs(searchTotal))}
+            </h3>
          </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+             <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Today</p>
+             <h3 className={`text-lg font-black ${getColorClass(totals.today, type!)}`}>{formatCurrency(Math.abs(totals.today))}</h3>
+          </div>
+          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+             <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">This Week</p>
+             <h3 className={`text-lg font-black ${getColorClass(totals.week, type!)}`}>{formatCurrency(Math.abs(totals.week))}</h3>
+          </div>
+          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+             <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">This Quarter</p>
+             <h3 className={`text-lg font-black ${getColorClass(totals.quarter, type!)}`}>{formatCurrency(Math.abs(totals.quarter))}</h3>
+          </div>
+          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+             <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">This Year</p>
+             <h3 className={`text-lg font-black ${getColorClass(totals.year, type!)}`}>{formatCurrency(Math.abs(totals.year))}</h3>
+          </div>
+        </div>
+      )}
+
+      {/* Income vs Expenses Chart */}
+      {chartData.length > 0 && (
+         <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm mb-6">
+            <h3 className="text-sm font-bold text-gray-900 mb-6">Trends (Monthly)</h3>
+            <div className="h-48 w-full">
+               <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} dy={10} />
+                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value} />
+                     <RechartsTooltip 
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
+                        cursor={{ fill: '#F3F4F6' }}
+                        formatter={(value: number) => [formatCurrency(value), '']}
+                        labelStyle={{ color: '#4B5563', fontWeight: 'bold', marginBottom: '4px' }}
+                     />
+                     {(type === 'all' || type === 'income') && (
+                        <Bar dataKey="income" name="Income" fill="#34D399" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                     )}
+                     {(type === 'all' || type === 'expense') && (
+                        <Bar dataKey="expense" name="Expense" fill="#FB7185" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                     )}
+                  </BarChart>
+               </ResponsiveContainer>
+            </div>
+         </div>
+      )}
+
+      {/* Search Filters */}
+      <div className="flex gap-2 mb-6">
+         <div className="flex-1 bg-white border border-gray-100 rounded-2xl flex items-center px-4 shadow-sm">
+            <Search className="text-gray-400 w-5 h-5 mr-2 shrink-0" />
+            <input 
+               type="text" 
+               placeholder="Search..." 
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               className="w-full py-3 bg-transparent text-sm font-medium outline-none placeholder-gray-400 flex-1 min-w-0"
+            />
+            {searchTerm && (
+               <button onClick={() => setSearchTerm('')} className="p-1 shrink-0">
+                  <X size={16} className="text-gray-400" />
+               </button>
+            )}
+         </div>
+         <div className="bg-white border border-gray-100 rounded-2xl flex items-center px-3 shadow-sm relative shrink-0">
+            <Calendar className="text-gray-400 w-5 h-5" />
+            <input 
+               type="date" 
+               value={dateFilter}
+               onChange={(e) => setDateFilter(e.target.value)}
+               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
+            {dateFilter && (
+               <button onClick={() => setDateFilter('')} className="p-1 relative ml-1 z-10">
+                  <X size={16} className="text-gray-400" />
+               </button>
+            )}
+         </div>
+      </div>
+
+      <div className="flex justify-end mb-6">
          <button onClick={handleAddClick} className="w-12 h-12 bg-gray-900 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-90 transition-all">
             <Plus size={24} />
          </button>
@@ -160,22 +371,22 @@ export default function BusinessTransactionList() {
 
       {loading && transactions.length === 0 ? (
         <div className="py-20 text-center text-gray-400">Loading history...</div>
-      ) : transactions.length === 0 ? (
+      ) : filteredTransactions.length === 0 ? (
         <div className="bg-white rounded-3xl p-10 text-center border border-gray-100 shadow-sm">
-           <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 ${type === 'income' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-              {type === 'income' ? <TrendingUp size={32} /> : <TrendingDown size={32} />}
+           <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 ${type === 'all' ? 'bg-brand-50 text-brand-600' : type === 'income' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+              {type === 'income' ? <TrendingUp size={32} /> : type === 'expense' ? <TrendingDown size={32} /> : <Calendar size={32} />}
            </div>
-           <h2 className="text-lg font-bold text-gray-900 mb-2">No {type}s found</h2>
-           <p className="text-xs text-gray-500 mb-8 max-w-xs mx-auto">Track your business {type}s here to maintain accurate records.</p>
-           <button onClick={handleAddClick} className="bg-gray-900 text-white font-bold py-3 px-6 rounded-xl text-sm">Add First {type}</button>
+           <h2 className="text-lg font-bold text-gray-900 mb-2">No {type === 'all' ? 'history' : type + 's'} found</h2>
+           <p className="text-xs text-gray-500 mb-8 max-w-xs mx-auto">Track your business {type === 'all' ? 'history' : type + 's'} here to maintain accurate records.</p>
+           {!searchTerm && !dateFilter && <button onClick={handleAddClick} className="bg-gray-900 text-white font-bold py-3 px-6 rounded-xl text-sm">Add First Record</button>}
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-           {transactions.map((tx) => (
+           {filteredTransactions.map((tx) => (
               <div key={tx.id} className="bg-white p-5 rounded-3xl border border-gray-50 flex items-center justify-between shadow-sm">
                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${type === 'income' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                       {type === 'income' ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${tx.type === 'income' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                       {tx.type === 'income' ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
                     </div>
                     <div>
                        <h4 className="font-bold text-gray-900 text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]">{tx.category}</h4>
@@ -186,8 +397,8 @@ export default function BusinessTransactionList() {
                  </div>
                  <div className="flex items-center gap-3">
                     <div className="text-right">
-                       <div className={`font-bold text-sm ${type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
-                          {type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                       <div className={`font-bold text-sm ${tx.type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
+                          {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
                        </div>
                        {tx.note && <p className="text-[10px] text-gray-400 mt-0.5 max-w-[80px] truncate">{tx.note}</p>}
                     </div>
@@ -195,7 +406,7 @@ export default function BusinessTransactionList() {
                        <button onClick={() => handleEdit(tx)} className="p-1 text-gray-400 hover:text-brand-600 transition-colors">
                           <Edit2 size={16} />
                        </button>
-                       <button onClick={() => handleDelete(tx)} className="p-1 text-gray-300 hover:text-red-500 transition-colors">
+                       <button onClick={() => { setTxToDelete(tx); setShowDeleteModal(true); }} className="p-1 text-gray-300 hover:text-red-500 transition-colors">
                           <Trash2 size={18} />
                        </button>
                     </div>
@@ -204,6 +415,14 @@ export default function BusinessTransactionList() {
            ))}
         </div>
       )}
+
+      {/* Delete Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => { setShowDeleteModal(false); setTxToDelete(null); }}
+        onConfirm={handleDelete}
+        itemName={txToDelete ? `${txToDelete.category} - ${formatCurrency(txToDelete.amount)}` : undefined}
+      />
 
       {/* Add Transaction Modal */}
       <AnimatePresence>
@@ -224,7 +443,7 @@ export default function BusinessTransactionList() {
             >
                <div className="flex justify-between items-center mb-6">
                   <h2 className="text-xl font-bold text-gray-900 flex items-center gap-3">
-                     {icon} {editingTx ? 'Edit' : 'Add'} {type === 'income' ? 'Income' : 'Expense'}
+                     {icon} {editingTx ? 'Edit' : 'Add'} {type === 'all' ? 'Transaction' : type === 'income' ? 'Income' : 'Expense'}
                   </h2>
                   <button 
                     onClick={() => { setShowModal(false); setEditingTx(null); }}
@@ -234,6 +453,28 @@ export default function BusinessTransactionList() {
                   </button>
                </div>
                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                  {type === 'all' && (
+                    <div className="flex flex-col gap-1.5">
+                       <label className="text-xs font-bold text-gray-500 uppercase ml-1">Type</label>
+                       <div className="flex gap-2">
+                         <button
+                           type="button"
+                           onClick={() => setFormData({...formData, txType: 'income'})}
+                           className={`flex-1 py-3 rounded-xl font-bold border ${formData.txType === 'income' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}
+                         >
+                           Income
+                         </button>
+                         <button
+                           type="button"
+                           onClick={() => setFormData({...formData, txType: 'expense'})}
+                           className={`flex-1 py-3 rounded-xl font-bold border ${formData.txType === 'expense' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}
+                         >
+                           Expense
+                         </button>
+                       </div>
+                    </div>
+                  )}
+
                   <div className="flex flex-col gap-1.5">
                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Amount</label>
                      <input 
@@ -281,9 +522,9 @@ export default function BusinessTransactionList() {
                   <button 
                     type="submit" 
                     disabled={loading}
-                    className={`mt-4 ${type === 'income' ? 'bg-green-600' : 'bg-red-500'} text-white font-bold py-4 rounded-2xl w-full active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2`}
+                    className={`mt-4 ${(formData.txType || type) === 'income' ? 'bg-green-600' : 'bg-red-500'} text-white font-bold py-4 rounded-2xl w-full active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2`}
                   >
-                    {loading ? 'Saving...' : editingTx ? 'Update Record' : `Add ${type}`}
+                    {loading ? 'Saving...' : editingTx ? 'Update Record' : `Add ${type === 'all' ? (formData.txType === 'income' ? 'Income' : 'Expense') : type}`}
                   </button>
                </form>
             </motion.div>

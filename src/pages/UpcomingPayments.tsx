@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ArrowLeft, Plus, Calendar, Clock, RotateCw, X, CheckCircle2, ChevronRight, CalendarDays
+  ArrowLeft, Plus, Calendar, Clock, RotateCw, X, CheckCircle2, ChevronRight, CalendarDays, Edit2, Trash2
 } from 'lucide-react';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency } from '../lib/currency';
 import { format, isSameDay, isSameMonth, isSameYear, addDays, addWeeks, addMonths, addYears, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 export default function UpcomingPayments() {
   const { user, userProfile } = useAuth();
@@ -19,6 +20,9 @@ export default function UpcomingPayments() {
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState<any>(null);
+  const [editingPayment, setEditingPayment] = useState<any>(null);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -28,6 +32,18 @@ export default function UpcomingPayments() {
     frequency: 'monthly' // daily, weekly, monthly, yearly
   });
 
+  const handleEdit = (payment: any) => {
+    setEditingPayment(payment);
+    setFormData({
+      title: payment.title,
+      amount: payment.amount.toString(),
+      dueDate: payment.dueDate,
+      isRecurring: payment.isRecurring || false,
+      frequency: payment.frequency || 'monthly'
+    });
+    setShowModal(true);
+  };
+
   useEffect(() => {
     if (!user) return;
     
@@ -35,7 +51,7 @@ export default function UpcomingPayments() {
     const q = query(
       collection(db, 'upcomingPayments'),
       where('userId', '==', user.uid),
-      orderBy('dueDate', 'asc') // This will break if we don't have the index, but let's see. If error, I'll catch it. Actually it's simple orderBy.
+      orderBy('dueDate', 'asc')
     );
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -55,21 +71,32 @@ export default function UpcomingPayments() {
     
     setLoading(true);
     try {
-      await addDoc(collection(db, 'upcomingPayments'), {
-        userId: user.uid,
-        title: formData.title,
-        amount: parseFloat(formData.amount),
-        dueDate: formData.dueDate,
-        isRecurring: formData.isRecurring,
-        frequency: formData.isRecurring ? formData.frequency : null,
-        createdAt: serverTimestamp(),
-      });
+      if (editingPayment) {
+        await updateDoc(doc(db, 'upcomingPayments', editingPayment.id), {
+          title: formData.title,
+          amount: parseFloat(formData.amount),
+          dueDate: formData.dueDate,
+          isRecurring: formData.isRecurring,
+          frequency: formData.isRecurring ? formData.frequency : null,
+        });
+      } else {
+        await addDoc(collection(db, 'upcomingPayments'), {
+          userId: user.uid,
+          title: formData.title,
+          amount: parseFloat(formData.amount),
+          dueDate: formData.dueDate,
+          isRecurring: formData.isRecurring,
+          frequency: formData.isRecurring ? formData.frequency : null,
+          createdAt: serverTimestamp(),
+        });
+      }
       setShowModal(false);
+      setEditingPayment(null);
       setFormData({
         title: '', amount: '', dueDate: format(new Date(), 'yyyy-MM-dd'), isRecurring: false, frequency: 'monthly'
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'upcomingPayments');
+      handleFirestoreError(err, editingPayment ? OperationType.UPDATE : OperationType.CREATE, 'upcomingPayments');
     } finally {
       setLoading(false);
     }
@@ -104,12 +131,15 @@ export default function UpcomingPayments() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async () => {
+      if (!paymentToDelete) return;
       setLoading(true);
       try {
-          await deleteDoc(doc(db, 'upcomingPayments', id));
+          await deleteDoc(doc(db, 'upcomingPayments', paymentToDelete.id));
+          setShowDeleteModal(false);
+          setPaymentToDelete(null);
       } catch(err) {
-          handleFirestoreError(err, OperationType.DELETE, `upcomingPayments/${id}`);
+          handleFirestoreError(err, OperationType.DELETE, `upcomingPayments/${paymentToDelete.id}`);
       } finally {
           setLoading(false);
       }
@@ -176,7 +206,12 @@ export default function UpcomingPayments() {
                                <div className="flex flex-col items-end">
                                    <p className="font-bold text-gray-900">{formatCurrency(payment.amount, currencyCode)}</p>
                                    <div className="flex items-center gap-2 mt-1">
-                                       <button onClick={() => handleDelete(payment.id)} className="text-[10px] text-gray-400 hover:text-red-500 font-bold uppercase tracking-wider">Cancel</button>
+                                       <button onClick={() => { setPaymentToDelete(payment); setShowDeleteModal(true); }} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors">
+                                            <Trash2 size={14} />
+                                       </button>
+                                       <button onClick={() => handleEdit(payment)} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-brand-600 transition-colors">
+                                            <Edit2 size={14} />
+                                       </button>
                                        <button onClick={() => handleMarkPaid(payment)} className="text-[10px] text-brand-600 font-bold uppercase tracking-wider bg-brand-50 px-2 py-1 rounded">Mark Paid</button>
                                    </div>
                                </div>
@@ -188,10 +223,17 @@ export default function UpcomingPayments() {
         )}
       </div>
 
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => { setShowDeleteModal(false); setPaymentToDelete(null); }}
+        onConfirm={handleDelete}
+        itemName={paymentToDelete ? paymentToDelete.title : undefined}
+      />
+
       <AnimatePresence>
         {showModal && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowModal(false)} className="fixed inset-0 bg-black/40 z-[60]" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setShowModal(false); setEditingPayment(null); }} className="fixed inset-0 bg-black/40 z-[60]" />
             <motion.div 
               initial={{ opacity: 0, y: 100 }} 
               animate={{ opacity: 1, y: 0 }} 
@@ -199,8 +241,8 @@ export default function UpcomingPayments() {
               className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[40px] z-[70] p-8 pb-32 max-h-[90vh] overflow-y-auto max-w-2xl mx-auto shadow-2xl"
             >
                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold text-gray-900">Add Payment Reminder</h2>
-                  <button onClick={() => setShowModal(false)} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600"><X size={18} /></button>
+                  <h2 className="text-xl font-bold text-gray-900">{editingPayment ? 'Edit Reminder' : 'Add Payment Reminder'}</h2>
+                  <button onClick={() => { setShowModal(false); setEditingPayment(null); }} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600"><X size={18} /></button>
                </div>
                
                <form onSubmit={handleSubmit} className="flex flex-col gap-4">

@@ -13,6 +13,7 @@ import {
   AreaChart, Area, XAxis, YAxis, 
   CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 export default function BusinessList() {
   const navigate = useNavigate();
@@ -21,6 +22,8 @@ export default function BusinessList() {
   const [businesses, setBusinesses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [bizToDelete, setBizToDelete] = useState<any>(null);
   const [editingBiz, setEditingBiz] = useState<any>(null);
   const [formData, setFormData] = useState({ name: '', category: '', description: '' });
   const [globalStats, setGlobalStats] = useState({ income: 0, expenses: 0, profit: 0 });
@@ -146,13 +149,13 @@ export default function BusinessList() {
     setShowModal(true);
   };
 
-  const handleDelete = async (bizId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!window.confirm("Are you sure? This will delete the business record.")) return;
-    
+  const handleDelete = async () => {
+    if (!bizToDelete) return;
     setLoading(true);
     try {
-      await deleteDoc(doc(db, 'businesses', bizId));
+      await deleteDoc(doc(db, 'businesses', bizToDelete.id));
+      setShowDeleteModal(false);
+      setBizToDelete(null);
     } catch (error) {
       console.error("Error deleting business:", error);
     } finally {
@@ -319,7 +322,7 @@ export default function BusinessList() {
                  <button onClick={(e) => handleEdit(biz, e)} className="p-2 text-gray-400 hover:text-brand-600 transition-colors">
                     <Edit2 size={16} />
                  </button>
-                 <button onClick={(e) => handleDelete(biz.id, e)} className="p-2 text-gray-300 hover:text-red-500 transition-colors">
+                 <button onClick={(e) => { e.stopPropagation(); setBizToDelete(biz); setShowDeleteModal(true); }} className="p-2 text-gray-300 hover:text-red-500 transition-colors">
                     <Trash2 size={18} />
                  </button>
                  <ChevronRight size={20} className="text-gray-300 ml-1" />
@@ -328,6 +331,14 @@ export default function BusinessList() {
           ))}
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => { setShowDeleteModal(false); setBizToDelete(null); }}
+        onConfirm={handleDelete}
+        itemName={bizToDelete ? bizToDelete.name : undefined}
+      />
 
       {/* Modal */}
       <AnimatePresence>
