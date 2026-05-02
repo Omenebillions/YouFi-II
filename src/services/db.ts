@@ -1,7 +1,7 @@
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, 
   deleteDoc, query, where, orderBy, serverTimestamp, 
-  onSnapshot
+  onSnapshot, limit
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { handleFirestoreError, OperationType } from './dbErrorHandler';
@@ -34,6 +34,17 @@ export const moveToTrash = async (collectionName: string, originalId: string, da
 export const fetchTransactions = async (userId: string): Promise<any[]> => {
   try {
     const q = query(collection(db, collections.transactions), where('userId', '==', userId), orderBy('date', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, collections.transactions);
+    return [];
+  }
+};
+
+export const fetchRecentTransactions = async (userId: string, maxResults: number = 50): Promise<any[]> => {
+  try {
+    const q = query(collection(db, collections.transactions), where('userId', '==', userId), orderBy('date', 'desc'), limit(maxResults));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
   } catch (error) {
