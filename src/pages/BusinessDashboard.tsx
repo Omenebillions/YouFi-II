@@ -17,7 +17,11 @@ export default function BusinessDashboard() {
   const { user, userProfile } = useAuth();
   const [business, setBusiness] = useState<any>(null);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
-  const [stats, setStats] = useState({ revenue: 0, expenses: 0, products: 0, sales: 0, debts: 0, salesProfit: 0, chartData: [] as any[] });
+  const [bTxs, setBTxs] = useState<any[]>([]);
+  const [bSales, setBSales] = useState<any[]>([]);
+  const [bDebts, setBDebts] = useState<any[]>([]);
+  const [productsCount, setProductsCount] = useState(0);
+  
   const [loading, setLoading] = useState(true);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferData, setTransferData] = useState({ amount: '', type: 'to-personal', note: '' });
@@ -39,67 +43,32 @@ export default function BusinessDashboard() {
     // Stats Listener: Transactions
     const qTx = query(collection(db, 'businessTransactions'), where('businessId', '==', businessId), where('userId', '==', user.uid));
     const unsubscribeTx = onSnapshot(qTx, (snapshot) => {
-      let txRev = 0;
-      let txExp = 0;
-      const chartMap: Record<string, any> = {};
-
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.type === 'income') txRev += data.amount;
-        else txExp += data.amount;
-
-        const dateStr = data.date;
-        if (dateStr) {
-           const monthStr = new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-           // sorting key YYYY-MM
-           const sortKey = dateStr.substring(0, 7); 
-           if (!chartMap[sortKey]) {
-              chartMap[sortKey] = { name: monthStr, sortKey, income: 0, expense: 0 };
-           }
-           if (data.type === 'income') chartMap[sortKey].income += data.amount;
-           else chartMap[sortKey].expense += data.amount;
-        }
-      });
-      
-      const chartData = Object.values(chartMap)
-         .sort((a: any, b: any) => a.sortKey.localeCompare(b.sortKey))
-         .slice(-6); // last 6 months
-
-      setStats(prev => ({ ...prev, revenue: txRev, expenses: txExp, chartData }));
-      setLoading(false);
+      setBTxs(snapshot.docs.map(d => d.data()));
     });
 
     // Stats Listener: Products
     const qProd = query(collection(db, 'products'), where('businessId', '==', businessId), where('userId', '==', user.uid));
     const unsubscribeProd = onSnapshot(qProd, (snapshot) => {
-      setStats(prev => ({ ...prev, products: snapshot.size }));
+      setProductsCount(snapshot.size);
     });
 
     // Stats Listener: Sales
     const qSales = query(collection(db, 'sales'), where('businessId', '==', businessId), where('userId', '==', user.uid));
     const unsubscribeSales = onSnapshot(qSales, (snapshot) => {
-      let salesRev = 0;
-      let salesProfit = 0;
-      snapshot.docs.forEach(s => {
-        const data = s.data();
-        salesRev += data.totalPrice;
-        salesProfit += data.profit || 0;
-      });
-      setStats(prev => ({ ...prev, sales: snapshot.size, salesProfit }));
+      setBSales(snapshot.docs.map(d => d.data()));
     });
 
     // Stats Listener: Debts
     const qDebt = query(collection(db, 'businessDebts'), where('businessId', '==', businessId), where('userId', '==', user.uid), where('status', '==', 'unpaid'));
     const unsubscribeDebt = onSnapshot(qDebt, (snapshot) => {
-      let debtAmt = 0;
-      snapshot.docs.forEach(d => debtAmt += d.data().amount);
-      setStats(prev => ({ ...prev, debts: debtAmt }));
+      setBDebts(snapshot.docs.map(d => d.data()));
     });
 
     // Recent Transactions Listener
     const qRecent = query(collection(db, 'businessTransactions'), where('businessId', '==', businessId), where('userId', '==', user.uid), orderBy('date', 'desc'), limit(5));
     const unsubscribeRecent = onSnapshot(qRecent, (snapshot) => {
       setRecentTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
     });
 
     return () => {
@@ -111,6 +80,85 @@ export default function BusinessDashboard() {
       unsubscribeRecent();
     };
   }, [businessId, user]);
+
+  const stats = React.useMemo(() => {
+    let txRev = 0;
+    let txExp = 0;
+    let salesRev = 0;
+    let salesProfit = 0;
+    
+    // For this month explicitly
+    let monthlyTxRev = 0;
+    let monthlyTxExp = 0;
+    let monthlySalesProfit = 0;
+    
+    const chartMap: Record<string, any> = {};
+    const now = new Date();
+    const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    // Process Sales (Sales = Revenue)
+    bSales.forEach(s => {
+       salesRev += s.totalPrice;
+       salesProfit += s.profit || 0;
+       
+       const dateStr = s.date;
+       if (dateStr) {
+           if (dateStr.startsWith(currentMonthPrefix)) {
+               monthlySalesProfit += s.profit || 0;
+           }
+           const monthStr = new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+           const sortKey = dateStr.substring(0, 7);
+           if (!chartMap[sortKey]) {
+              chartMap[sortKey] = { name: monthStr, sortKey, income: 0, expense: 0 };
+           }
+           chartMap[sortKey].income += s.totalPrice;
+       }
+    });
+
+    // Process Transactions
+    bTxs.forEach(tx => {
+       if (tx.type === 'income') txRev += tx.amount;
+       else txExp += tx.amount;
+
+       const dateStr = tx.date;
+       if (dateStr) {
+           if (dateStr.startsWith(currentMonthPrefix)) {
+               if (tx.type === 'income') monthlyTxRev += tx.amount;
+               else monthlyTxExp += tx.amount;
+           }
+           const monthStr = new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+           const sortKey = dateStr.substring(0, 7);
+           if (!chartMap[sortKey]) {
+              chartMap[sortKey] = { name: monthStr, sortKey, income: 0, expense: 0 };
+           }
+           if (tx.type === 'income') chartMap[sortKey].income += tx.amount;
+           else chartMap[sortKey].expense += tx.amount;
+       }
+    });
+
+    const chartData = Object.values(chartMap)
+          .sort((a: any, b: any) => a.sortKey.localeCompare(b.sortKey))
+          .slice(-6);
+
+    const totalRevenue = txRev + salesRev;
+    const totalExpenses = txExp;
+    const debtsAmt = bDebts.reduce((acc, d) => acc + d.amount, 0);
+    
+    // Monthly Net Profit
+    const monthlyNetProfit = monthlySalesProfit + monthlyTxRev - monthlyTxExp;
+    const lifetimeNetProfit = salesProfit + txRev - txExp;
+
+    return { 
+       revenue: totalRevenue, 
+       expenses: totalExpenses, 
+       salesProfit, 
+       chartData, 
+       debts: debtsAmt, 
+       products: productsCount,
+       monthlyNetProfit,
+       lifetimeNetProfit
+    };
+  }, [bTxs, bSales, bDebts, productsCount]);
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,7 +211,7 @@ export default function BusinessDashboard() {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(val);
   };
 
-  const netProfit = stats.salesProfit + stats.revenue - stats.expenses;
+  const netProfit = stats.monthlyNetProfit;
 
   if (!business && !loading) return <div className="p-10 text-center">Business not found.</div>;
 
@@ -200,11 +248,11 @@ export default function BusinessDashboard() {
             
             <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-6 pb-2">
                 <div className="flex flex-col gap-1 text-left">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400"></span> Income</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400"></span> Total Income</p>
                     <p className="text-lg font-black text-emerald-400">{formatCurrency(stats.revenue)}</p>
                 </div>
                 <div className="flex flex-col gap-1 text-left border-l border-white/10 pl-4">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-400"></span> Expenses</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-400"></span> Total Expenses</p>
                     <p className="text-lg font-black text-rose-400">{formatCurrency(stats.expenses)}</p>
                 </div>
             </div>
@@ -271,14 +319,14 @@ export default function BusinessDashboard() {
       <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm mb-6">
          <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-gray-900 flex items-center gap-2">
-               <PieChart size={18} className="text-brand-600" /> Net Profit
+               <PieChart size={18} className="text-brand-600" /> This Month's Net Profit
             </h3>
             <span className={`text-[10px] font-extrabold px-2 py-1 rounded-lg ${netProfit >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                {netProfit >= 0 ? 'Profitable' : 'Loss'}
             </span>
          </div>
          <div className="text-3xl font-extrabold text-gray-900 mb-2">{formatCurrency(netProfit)}</div>
-         <p className="text-xs text-gray-500 font-medium">calculated as Sales Margins + Income minus Operating Expenses</p>
+         <p className="text-xs text-gray-500 font-medium">calculated as Sales Margins + Income minus Operating Expenses for the current month.</p>
          {stats.debts > 0 && (
            <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
               <span className="text-xs text-red-500 font-bold flex items-center gap-1"><AlertCircle size={14} /> Outstanding Debt:</span>

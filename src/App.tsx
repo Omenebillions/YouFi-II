@@ -22,6 +22,7 @@ import BusinessProductList from './pages/BusinessProductList';
 import BusinessSaleList from './pages/BusinessSaleList';
 import BusinessTransactionList from './pages/BusinessTransactionList';
 import BusinessDebtList from './pages/BusinessDebtList';
+import BusinessCoach from './pages/BusinessCoach';
 import UpcomingPayments from './pages/UpcomingPayments';
 import TrashBin from './pages/TrashBin';
 
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="business/:businessId/sales" element={<BusinessSaleList />} />
             <Route path="business/:businessId/transactions/:type" element={<BusinessTransactionList />} />
             <Route path="business/:businessId/debts" element={<BusinessDebtList />} />
+            <Route path="business/:businessId/coach" element={<BusinessCoach />} />
             <Route path="upcoming-payments" element={<UpcomingPayments />} />
             <Route path="trash" element={<TrashBin />} />
           </Route>

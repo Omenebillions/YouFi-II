@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, Trash2, 
   ShoppingBag, Search, Calendar,
@@ -20,6 +20,7 @@ import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 export default function BusinessSaleList() {
   const { businessId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, userProfile } = useAuth();
   const [sales, setSales] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -30,6 +31,13 @@ export default function BusinessSaleList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [editingSale, setEditingSale] = useState<any>(null);
+  
+  useEffect(() => {
+    if (location.search.includes('add=true')) {
+       setShowModal(true);
+    }
+  }, [location.search]);
+  
   const [formData, setFormData] = useState({ 
     productId: '', 
     quantity: '1', 

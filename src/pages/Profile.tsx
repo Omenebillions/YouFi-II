@@ -6,14 +6,7 @@ import { collections } from '../services/db';
 import { db } from '../services/firebase';
 import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
 import { useNavigate } from 'react-router-dom';
-
-const CURRENCIES = [
-  { code: 'USD', symbol: '$', label: 'US Dollar (USD)' },
-  { code: 'EUR', symbol: '€', label: 'Euro (EUR)' },
-  { code: 'GBP', symbol: '£', label: 'British Pound (GBP)' },
-  { code: 'NGN', symbol: '₦', label: 'Nigerian Naira (NGN)' },
-  { code: 'INR', symbol: '₹', label: 'Indian Rupee (INR)' },
-];
+import { CURRENCIES, formatCurrency } from '../lib/currency';
 
 export default function Profile() {
   const { userProfile, user, logout } = useAuth();

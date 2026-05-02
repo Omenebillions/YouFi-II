@@ -4,7 +4,7 @@ import {
   Home, Repeat, Target, MessageCircle, Plus, Menu, X, 
   ArrowDown, CreditCard, Settings, LogOut, Briefcase,
   Building2, ShoppingCart, Package, Wallet, TrendingUp, TrendingDown,
-  BarChart3, Calendar
+  BarChart3, Calendar, History, LineChart, WifiOff
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -21,7 +21,22 @@ export default function Layout() {
   const businessId = businessIdParam || (businessIdMatch ? businessIdMatch[1] : null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showBusinessAddMenu, setShowBusinessAddMenu] = useState(false);
   const [businesses, setBusinesses] = useState<any[]>([]);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -44,6 +59,12 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-[100dvh] w-full bg-[#f8f9fc] flex-col relative">
+      {isOffline && (
+        <div className="w-full bg-orange-500 text-white text-xs font-bold py-1.5 flex justify-center items-center gap-2 z-50">
+          <WifiOff size={14} />
+          <span>You are offline. Data is saved locally and will sync when you reconnect.</span>
+        </div>
+      )}
       <main className={`flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 ${isBusinessPage ? 'pb-8' : 'pb-32'} pt-4 relative z-0 hide-scrollbar`}>
         <Outlet />
       </main>
@@ -171,6 +192,10 @@ export default function Layout() {
                     <Calendar size={20} className="text-brand-600" />
                     <span>Upcoming Payments</span>
                  </Link>
+                  <Link to="/insights" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
+                     <LineChart size={20} className="text-brand-600" />
+                     <span>Analysis & Insights</span>
+                  </Link>
                  <Link to="/business" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-brand-50 p-3 rounded-xl transition-colors border border-dashed border-brand-200 mt-2" onClick={() => setDrawerOpen(false)}>
                     <Briefcase size={20} className="text-brand-600" />
                     <span>Business (SME)</span>
@@ -203,23 +228,68 @@ export default function Layout() {
         />
       )}
       
-      {/* Bottom Nav overlay - Hidden on business pages */}
-      {!isBusinessPage && (
+      {/* Personal Bottom Nav Wrapper */}
+      {!isBusinessPage ? (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-30 shadow-xl">
           <NavItem to="/" icon={<Home size={22} />} isActive={location.pathname === '/'} />
           <NavItem to="/goals" icon={<Target size={22} />} isActive={location.pathname === '/goals'} />
           
-          {/* Floating Add Action */}
           <div className="relative -top-8 flex-shrink-0">
             <NavLink to="/add" className="flex items-center justify-center w-14 h-14 bg-brand-600 rounded-full text-white shadow-[0_8px_20px_-6px_rgba(85,68,232,0.6)] transform transition-transform active:scale-95">
               <Plus size={26} strokeWidth={2.5} />
             </NavLink>
           </div>
           
-          <NavItem to="/insights" icon={<Repeat size={22} />} isActive={location.pathname === '/insights'} />
+          <NavItem to="/history/all" icon={<Repeat size={22} />} isActive={location.pathname === '/history/all'} />
           <NavItem to="/coach" icon={<MessageCircle size={22} />} isActive={location.pathname === '/coach'} />
         </nav>
-      )}
+      ) : businessId && activeBusiness ? (
+        <>
+          {showBusinessAddMenu && (
+            <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-30" onClick={() => setShowBusinessAddMenu(false)}>
+              <div className="absolute bottom-28 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white rounded-3xl p-4 shadow-xl border border-gray-100 transform transition-all flex flex-col gap-2">
+                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/sales?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                       <ShoppingCart size={20} />
+                    </div>
+                    Add Sales Record
+                 </button>
+                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/transactions/income?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                       <TrendingUp size={20} />
+                    </div>
+                    Add Business Income
+                 </button>
+                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/transactions/expense?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                    <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
+                       <TrendingDown size={20} />
+                    </div>
+                    Add Business Expense
+                 </button>
+                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/debts?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                    <div className="w-10 h-10 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center">
+                       <CreditCard size={20} />
+                    </div>
+                    Add Business Debt
+                 </button>
+              </div>
+            </div>
+          )}
+          <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-40 shadow-xl">
+            <NavItem to={`/business/${businessId}`} icon={<Home size={22} />} isActive={location.pathname === `/business/${businessId}`} />
+            <NavItem to={`/business/${businessId}/sales`} icon={<ShoppingCart size={22} />} isActive={location.pathname.includes('/sales')} />
+            
+            <div className="relative -top-8 flex-shrink-0">
+              <button onClick={() => setShowBusinessAddMenu(!showBusinessAddMenu)} className={`flex items-center justify-center w-14 h-14 bg-gray-900 rounded-full text-white shadow-[0_8px_20px_-6px_rgba(17,24,39,0.6)] transform transition-transform active:scale-95 ${showBusinessAddMenu ? 'rotate-45' : ''}`}>
+                <Plus size={26} strokeWidth={2.5} />
+              </button>
+            </div>
+            
+            <NavItem to={`/business/${businessId}/transactions/all`} icon={<Repeat size={22} />} isActive={location.pathname.includes('/transactions/')} />
+            <NavItem to={`/business/${businessId}/coach`} icon={<MessageCircle size={22} />} isActive={location.pathname.includes('/coach')} />
+          </nav>
+        </>
+      ) : null}
     </div>
   );
 }

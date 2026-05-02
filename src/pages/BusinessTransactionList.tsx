@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, TrendingUp, TrendingDown,
   Search, Calendar, ShoppingCart, Trash2, Edit2, X
@@ -16,6 +16,7 @@ import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 export default function BusinessTransactionList() {
   const { businessId, type } = useParams(); // type: 'income' or 'expense'
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, userProfile } = useAuth();
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +26,13 @@ export default function BusinessTransactionList() {
   const [txToDelete, setTxToDelete] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  
+  useEffect(() => {
+    if (location.search.includes('add=true')) {
+       setShowModal(true);
+    }
+  }, [location.search]);
+  
   const [formData, setFormData] = useState({ amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '', txType: type === 'all' ? 'expense' : type });
 
   const currencyCode = userProfile?.currency || 'USD';

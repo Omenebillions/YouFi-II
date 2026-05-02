@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, CreditCard, 
   Search, Calendar, CheckCircle2, AlertCircle, Trash2, Edit2, X
@@ -14,6 +14,7 @@ import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 export default function BusinessDebtList() {
   const { businessId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, userProfile } = useAuth();
   const [debts, setDebts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,6 +23,12 @@ export default function BusinessDebtList() {
   const [debtToDelete, setDebtToDelete] = useState<any>(null);
   const [editingDebt, setEditingDebt] = useState<any>(null);
   const [formData, setFormData] = useState({ lender: '', amount: '', dueDate: '', status: 'unpaid' });
+  
+  useEffect(() => {
+    if (location.search.includes('add=true')) {
+       setShowModal(true);
+    }
+  }, [location.search]);
 
   const currencyCode = userProfile?.currency || 'USD';
 
