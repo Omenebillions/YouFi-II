@@ -88,7 +88,7 @@ export default function AddTransaction() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || !category) return;
+    if (!amount || !category || loading) return;
     
     setLoading(true);
     await addTransaction({

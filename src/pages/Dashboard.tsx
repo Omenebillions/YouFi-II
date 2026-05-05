@@ -80,6 +80,7 @@ export default function Dashboard() {
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (transferLoading) return;
     const amount = parseFloat(transferData.amount);
     if (!user || !transferData.businessId || isNaN(amount) || amount <= 0) return;
 

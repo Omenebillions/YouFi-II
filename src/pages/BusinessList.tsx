@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
-  Plus, Building2, Briefcase, 
+  Plus, Building2, Briefcase, Lightbulb,
   ChevronRight, ArrowLeft, Trash2, Edit2,
   TrendingUp, TrendingDown, DollarSign, BarChart2, X
 } from 'lucide-react';
@@ -112,7 +112,7 @@ export default function BusinessList() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !formData.name) return;
+    if (!user || !formData.name || loading) return;
 
     setLoading(true);
     try {
@@ -331,6 +331,28 @@ export default function BusinessList() {
           ))}
         </div>
       )}
+
+      <div className="flex items-center justify-between mt-8 mb-4 px-2">
+         <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Ideas & Planning</h3>
+      </div>
+      
+      <motion.div 
+         initial={{ opacity: 0, y: 10 }}
+         animate={{ opacity: 1, y: 0 }}
+         onClick={() => navigate('/business-ideas')}
+         className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all mb-8"
+      >
+         <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600">
+               <Lightbulb size={24} />
+            </div>
+            <div>
+               <h3 className="font-bold text-gray-900">Business Ideas</h3>
+               <p className="text-xs text-gray-500 font-medium">Use AI to plan and launch your next venture</p>
+            </div>
+         </div>
+         <ChevronRight size={20} className="text-gray-300 ml-1" />
+      </motion.div>
 
       {/* Delete Confirmation Modal */}
       <DeleteConfirmationModal

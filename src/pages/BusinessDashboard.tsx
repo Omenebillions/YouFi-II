@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Building2, TrendingUp, TrendingDown, 
   Package, ShoppingCart, ArrowRightLeft, Plus, 
-  Calendar, MoreVertical, PieChart, CreditCard, AlertCircle
+  Calendar, MoreVertical, PieChart, CreditCard, AlertCircle, Activity
 } from 'lucide-react';
 import { doc, onSnapshot, collection, query, where, orderBy, limit, addDoc, serverTimestamp, updateDoc, increment, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -90,6 +90,7 @@ export default function BusinessDashboard() {
     // For this month explicitly
     let monthlyTxRev = 0;
     let monthlyTxExp = 0;
+    let monthlySalesRev = 0;
     let monthlySalesProfit = 0;
     
     const chartMap: Record<string, any> = {};
@@ -104,6 +105,7 @@ export default function BusinessDashboard() {
        const dateStr = s.date;
        if (dateStr) {
            if (dateStr.startsWith(currentMonthPrefix)) {
+               monthlySalesRev += s.totalPrice;
                monthlySalesProfit += s.profit || 0;
            }
            const monthStr = new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
@@ -142,15 +144,17 @@ export default function BusinessDashboard() {
 
     const totalRevenue = txRev + salesRev;
     const totalExpenses = txExp;
+    const netBalance = totalRevenue - totalExpenses;
     const debtsAmt = bDebts.reduce((acc, d) => acc + d.amount, 0);
     
-    // Monthly Net Profit
-    const monthlyNetProfit = monthlySalesProfit + monthlyTxRev - monthlyTxExp;
-    const lifetimeNetProfit = salesProfit + txRev - txExp;
+    // Monthly Net Profit (Revenue - Expenses)
+    const monthlyNetProfit = monthlySalesRev + monthlyTxRev - monthlyTxExp;
+    const lifetimeNetProfit = totalRevenue - totalExpenses;
 
     return { 
        revenue: totalRevenue, 
        expenses: totalExpenses, 
+       netBalance,
        salesProfit, 
        chartData, 
        debts: debtsAmt, 
@@ -162,6 +166,7 @@ export default function BusinessDashboard() {
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     const amount = parseFloat(transferData.amount);
     if (!user || !businessId || isNaN(amount) || amount <= 0) return;
 
@@ -213,6 +218,58 @@ export default function BusinessDashboard() {
 
   const netProfit = stats.monthlyNetProfit;
 
+  const healthMetrics = React.useMemo(() => {
+    let score = 50;
+    const rev = stats.revenue;
+    const debt = stats.debts;
+    const mNetProfit = stats.monthlyNetProfit;
+    
+    // Profit margin contribution (-20 to +20)
+    const profitMargin = rev > 0 ? (stats.lifetimeNetProfit / rev) : 0;
+    score += Math.min(20, Math.max(-20, profitMargin * 40));
+
+    // Monthly trend contribution (-15 to +15)
+    score += mNetProfit > 0 ? 15 : (mNetProfit < 0 ? -15 : 0);
+
+    // Debt contribution (-25 to +15)
+    if (debt > 0) {
+        const debtRatio = rev > 0 ? (debt / rev) : 1;
+        score -= Math.min(25, debtRatio * 30);
+    } else {
+        score += 15;
+    }
+
+    score = Math.max(0, Math.min(100, Math.round(score)));
+
+    let rating = 'Fair';
+    let explanation = 'Your business is stable but there is room for improvement in cash flow and debt management.';
+    let colorClass = 'text-yellow-600';
+    let bgClass = 'bg-yellow-50';
+    let barColor = 'bg-yellow-400';
+
+    if (score >= 80) {
+        rating = 'Excellent';
+        explanation = 'Outstanding financial health! Strong profit margins, positive cash flow, and manageable debt levels.';
+        colorClass = 'text-emerald-700';
+        bgClass = 'bg-emerald-50';
+        barColor = 'bg-emerald-500';
+    } else if (score >= 60) {
+        rating = 'Good';
+        explanation = 'Solid financial health. Maintain your current cash flow trends and keep debt under control.';
+        colorClass = 'text-blue-700';
+        bgClass = 'bg-blue-50';
+        barColor = 'bg-blue-500';
+    } else if (score < 40) {
+        rating = 'Needs Attention';
+        explanation = 'Your financial health is at risk. Focus on increasing revenue, cutting expenses, or clearing outstanding debts.';
+        colorClass = 'text-rose-700';
+        bgClass = 'bg-rose-50';
+        barColor = 'bg-rose-500';
+    }
+
+    return { score, rating, explanation, colorClass, bgClass, barColor };
+  }, [stats]);
+
   if (!business && !loading) return <div className="p-10 text-center">Business not found.</div>;
 
   return (
@@ -238,7 +295,7 @@ export default function BusinessDashboard() {
                 <div>
                    <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Company Assets</p>
                    <h2 className="text-4xl font-extrabold tracking-tight leading-none">
-                      {formatCurrency(business?.balance || 0)}
+                      {formatCurrency(stats.netBalance)}
                    </h2>
                 </div>
                 <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm">
@@ -326,13 +383,36 @@ export default function BusinessDashboard() {
             </span>
          </div>
          <div className="text-3xl font-extrabold text-gray-900 mb-2">{formatCurrency(netProfit)}</div>
-         <p className="text-xs text-gray-500 font-medium">calculated as Sales Margins + Income minus Operating Expenses for the current month.</p>
+         <p className="text-xs text-gray-500 font-medium">calculated as Total Income (Sales + Other Income) minus Operating Expenses for the current month.</p>
          {stats.debts > 0 && (
            <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
               <span className="text-xs text-red-500 font-bold flex items-center gap-1"><AlertCircle size={14} /> Outstanding Debt:</span>
               <span className="text-sm font-bold text-red-600">{formatCurrency(stats.debts)}</span>
            </div>
          )}
+      </div>
+
+      {/* Financial Health Score */}
+      <div className={`p-6 rounded-[32px] mb-8 flex flex-col gap-4 shadow-sm border border-gray-100 transition-all ${healthMetrics.bgClass}`}>
+         <div className="flex justify-between items-start">
+            <div className="flex flex-col">
+               <h3 className={`text-sm font-bold flex items-center gap-2 mb-1 ${healthMetrics.colorClass}`}>
+                  <Activity size={18} /> Financial Health Score
+               </h3>
+               <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md self-start bg-white/60 ${healthMetrics.colorClass}`}>{healthMetrics.rating}</span>
+            </div>
+            <div className={`text-3xl font-black ${healthMetrics.colorClass}`}>
+               {healthMetrics.score}<span className="text-sm font-bold opacity-50">/100</span>
+            </div>
+         </div>
+         
+         <div className="w-full bg-black/5 rounded-full h-2.5 overflow-hidden">
+            <div className={`h-2.5 rounded-full ${healthMetrics.barColor}`} style={{ width: `${healthMetrics.score}%` }}></div>
+         </div>
+
+         <p className="text-xs text-gray-700 font-medium leading-relaxed opacity-90">
+            {healthMetrics.explanation}
+         </p>
       </div>
 
       {/* Income vs Expenses Chart */}

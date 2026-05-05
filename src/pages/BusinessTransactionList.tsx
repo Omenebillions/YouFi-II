@@ -23,6 +23,7 @@ export default function BusinessTransactionList() {
   const [showModal, setShowModal] = useState(false);
   const [editingTx, setEditingTx] = useState<any>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [txToDelete, setTxToDelete] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -84,10 +85,11 @@ export default function BusinessTransactionList() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || isSubmitting) return;
     const amount = parseFloat(formData.amount);
     if (!user || !businessId || !type || isNaN(amount) || amount <= 0) return;
 
-    setLoading(true);
+    setIsSubmitting(true);
     try {
       const actualType = formData.txType || type;
       if (editingTx) {
@@ -144,14 +146,14 @@ export default function BusinessTransactionList() {
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'businessTransactions');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
     if (!txToDelete) return;
     const tx = txToDelete;
-    setLoading(true);
+    setIsSubmitting(true);
     try {
       await moveToTrash('businessTransactions', tx.id, tx);
       await deleteDoc(doc(db, 'businessTransactions', tx.id));
@@ -159,10 +161,12 @@ export default function BusinessTransactionList() {
       await updateDoc(doc(db, 'businesses', businessId!), {
         balance: increment(tx.type === 'income' ? -tx.amount : tx.amount)
       });
+      setShowDeleteModal(false);
+      setTxToDelete(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `businessTransactions/${tx.id}`);
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -529,10 +533,10 @@ export default function BusinessTransactionList() {
 
                   <button 
                     type="submit" 
-                    disabled={loading}
+                    disabled={isSubmitting}
                     className={`mt-4 ${(formData.txType || type) === 'income' ? 'bg-green-600' : 'bg-red-500'} text-white font-bold py-4 rounded-2xl w-full active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2`}
                   >
-                    {loading ? 'Saving...' : editingTx ? 'Update Record' : `Add ${type === 'all' ? (formData.txType === 'income' ? 'Income' : 'Expense') : type}`}
+                    {isSubmitting ? 'Saving...' : editingTx ? 'Update Record' : `Add ${type === 'all' ? (formData.txType === 'income' ? 'Income' : 'Expense') : type}`}
                   </button>
                </form>
             </motion.div>

@@ -26,6 +26,7 @@ export default function BusinessSaleList() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [saleToDelete, setSaleToDelete] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -83,6 +84,7 @@ export default function BusinessSaleList() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     const product = products.find(p => p.id === formData.productId);
     const qty = parseInt(formData.quantity);
     
@@ -174,7 +176,7 @@ export default function BusinessSaleList() {
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'sales');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -198,7 +200,7 @@ export default function BusinessSaleList() {
   const handleDeleteSale = async () => {
     if (!saleToDelete) return;
     const sale = saleToDelete;
-    setLoading(true);
+    setIsSubmitting(true);
     try {
       // Move to trash first
       await moveToTrash('sales', sale.id, sale);
@@ -235,11 +237,13 @@ export default function BusinessSaleList() {
       }
 
       fetchSalesAndProducts();
+      setShowDeleteModal(false);
+      setSaleToDelete(null);
     } catch (error) {
       alert("Could not delete sale. Check error in console.");
       handleFirestoreError(error, OperationType.DELETE, `sales/${sale.id}`);
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -443,7 +447,15 @@ export default function BusinessSaleList() {
               exit={{ opacity: 0, y: 100 }}
               className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[40px] z-[70] p-8 pb-32 max-h-[90vh] overflow-y-auto max-w-2xl mx-auto shadow-2xl"
             >
-               <h2 className="text-xl font-bold text-gray-900 mb-6">{editingSale ? 'Edit Sale' : 'Record New Sale'}</h2>
+               <div className="flex justify-between items-center mb-6">
+                 <h2 className="text-xl font-bold text-gray-900">{editingSale ? 'Edit Sale' : 'Record New Sale'}</h2>
+                 <button 
+                    onClick={() => { setShowModal(false); setEditingSale(null); }}
+                    className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
+                  >
+                     <X size={20} />
+                  </button>
+               </div>
                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                   <div className="flex flex-col gap-1.5">
                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Select Item</label>
@@ -500,10 +512,10 @@ export default function BusinessSaleList() {
 
                   <button 
                     type="submit" 
-                    disabled={loading || products.length === 0}
+                    disabled={isSubmitting || products.length === 0}
                     className="mt-4 bg-brand-600 text-white font-bold py-4 rounded-2xl w-full active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                   >
-                    {loading ? 'Saving...' : editingSale ? 'Update Record' : 'Complete Sale'}
+                    {isSubmitting ? 'Saving...' : editingSale ? 'Update Record' : 'Complete Sale'}
                   </button>
                </form>
             </motion.div>
