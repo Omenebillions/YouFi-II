@@ -54,6 +54,7 @@ export default function BusinessDebtList() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     const amount = parseFloat(formData.amount);
     if (!user || !businessId || !formData.lender || isNaN(amount) || amount <= 0) return;
 
@@ -128,6 +129,7 @@ export default function BusinessDebtList() {
        fetchDebts();
     } catch (err) {
        console.error("Error updating debt status:", err);
+       handleFirestoreError(err, OperationType.UPDATE, `businessDebts/${debt.id}`);
     }
   };
 
@@ -259,13 +261,21 @@ export default function BusinessDebtList() {
                     <div className="text-right">
                        <div className="font-extrabold text-gray-900 text-sm">{formatCurrency(d.amount)}</div>
                     </div>
-                    <div className="flex flex-col gap-1">
-                       <button onClick={() => handleEdit(d)} className="p-1 text-gray-400 hover:text-brand-600 transition-colors">
-                          <Edit2 size={16} />
-                       </button>
-                       <button onClick={() => { setDebtToDelete(d); setShowDeleteModal(true); }} className="p-1 text-gray-300 hover:text-red-500 transition-colors">
-                          <Trash2 size={18} />
-                       </button>
+                    <div className="flex flex-col gap-1 items-end">
+                       <div className="flex-row gap-1">
+                          <button onClick={() => handleEdit(d)} className="p-1 text-gray-400 hover:text-brand-600 transition-colors">
+                             <Edit2 size={16} />
+                          </button>
+                          <button onClick={() => { setDebtToDelete(d); setShowDeleteModal(true); }} className="p-1 text-gray-300 hover:text-red-500 transition-colors">
+                             <Trash2 size={18} />
+                          </button>
+                       </div>
+                       <button 
+                           onClick={() => toggleDebtStatus(d)}
+                           className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors ${d.status === 'paid' ? 'bg-orange-50 text-orange-600 hover:bg-orange-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}
+                        >
+                           {d.status === 'paid' ? 'Mark Unpaid' : 'Mark Paid'}
+                        </button>
                     </div>
                  </div>
               </div>

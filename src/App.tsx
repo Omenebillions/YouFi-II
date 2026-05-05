@@ -26,6 +26,8 @@ import BusinessCoach from './pages/BusinessCoach';
 import UpcomingPayments from './pages/UpcomingPayments';
 import TrashBin from './pages/TrashBin';
 
+import BusinessIdeas from './pages/BusinessIdeas';
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   
@@ -57,6 +59,7 @@ export default function App() {
             <Route path="profile" element={<Profile />} />
             <Route path="history/:type" element={<HistoryPage />} />
             <Route path="business" element={<BusinessList />} />
+            <Route path="business-ideas" element={<BusinessIdeas />} />
             <Route path="business/:businessId" element={<BusinessDashboard />} />
             <Route path="business/:businessId/products" element={<BusinessProductList />} />
             <Route path="business/:businessId/sales" element={<BusinessSaleList />} />

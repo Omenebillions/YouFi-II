@@ -48,7 +48,7 @@ export default function BusinessProductList() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !businessId || !formData.name) return;
+    if (!user || !businessId || !formData.name || loading) return;
 
     setLoading(true);
     try {
