@@ -28,6 +28,7 @@ export default function BusinessList() {
   const [formData, setFormData] = useState({ name: '', category: '', description: '' });
   const [globalStats, setGlobalStats] = useState({ income: 0, expenses: 0, profit: 0 });
   const [chartData, setChartData] = useState<any[]>([]);
+  const [businessBalances, setBusinessBalances] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     if (!user) return;
@@ -44,24 +45,27 @@ export default function BusinessList() {
     // Global Stats & Trends Listener (Transactions)
     const qTx = query(collection(db, 'businessTransactions'), where('userId', '==', user.uid), orderBy('date', 'asc'));
     const unsubscribeTx = onSnapshot(qTx, (txSnapshot) => {
-      // Sales snapshot for combined view
       const qSales = query(collection(db, 'sales'), where('userId', '==', user.uid), orderBy('date', 'asc'));
       
-      // Since we need to join Tx and Sales, we can either use another sub-listener or just get Sales one-off or sub-listen too.
-      // For total Empire view, let's sub-listen to both safely.
       const unsubscribeSales = onSnapshot(qSales, (salesSnapshot) => {
         let totalInc = 0;
         let totalExp = 0;
-        let totalSalesProfit = 0;
+        let totalSalesRev = 0;
+        const bizBalances: { [key: string]: number } = {};
 
-        const monthlyData: { [key: string]: { date: string, income: number, expenses: number, profit: number } } = {};
+        const monthlyData: { [key: string]: { date: string, income: number, expenses: number } } = {};
 
         txSnapshot.docs.forEach(d => {
           const data = d.data();
+          const bid = data.businessId;
+          if (bid) {
+            if (!bizBalances[bid]) bizBalances[bid] = 0;
+            bizBalances[bid] += (data.type === 'income' ? data.amount : -data.amount);
+          }
           if (!data.date) return;
           const month = data.date.substring(0, 7);
           if (!monthlyData[month]) {
-            monthlyData[month] = { date: month, income: 0, expenses: 0, profit: 0 };
+            monthlyData[month] = { date: month, income: 0, expenses: 0 };
           }
           if (data.type === 'income') {
             totalInc += data.amount;
@@ -74,19 +78,25 @@ export default function BusinessList() {
 
         salesSnapshot.docs.forEach(d => {
           const data = d.data();
+          const bid = data.businessId;
+          if (bid) {
+            if (!bizBalances[bid]) bizBalances[bid] = 0;
+            bizBalances[bid] += data.totalPrice;
+          }
           if (!data.date) return;
           const month = data.date.substring(0, 7);
           if (!monthlyData[month]) {
-            monthlyData[month] = { date: month, income: 0, expenses: 0, profit: 0 };
+            monthlyData[month] = { date: month, income: 0, expenses: 0 };
           }
-          totalSalesProfit += (data.profit || 0);
-          monthlyData[month].profit += (data.profit || 0);
+          totalSalesRev += data.totalPrice;
+          monthlyData[month].income += data.totalPrice;
         });
 
+        setBusinessBalances(bizBalances);
         setGlobalStats({
-          income: totalInc + totalSalesProfit,
+          income: totalInc + totalSalesRev,
           expenses: totalExp,
-          profit: (totalInc + totalSalesProfit) - totalExp
+          profit: (totalInc + totalSalesRev) - totalExp
         });
 
         setChartData(Object.values(monthlyData).sort((a, b) => a.date.localeCompare(b.date)));
@@ -315,7 +325,13 @@ export default function BusinessList() {
                  </div>
                  <div>
                     <h3 className="font-bold text-gray-900">{biz.name}</h3>
-                    <p className="text-xs text-gray-500 font-medium">{biz.category || 'General'}</p>
+                    <div className="flex items-center gap-2">
+                       <p className="text-xs text-gray-500 font-medium">{biz.category || 'General'}</p>
+                       <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                       <p className={`text-[10px] font-bold ${(businessBalances[biz.id] || 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {formatCurrency(businessBalances[biz.id] || 0)}
+                       </p>
+                    </div>
                  </div>
               </div>
               <div className="flex items-center gap-2">
