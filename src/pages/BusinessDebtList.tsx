@@ -44,7 +44,13 @@ export default function BusinessDebtList() {
     try {
       const q = query(collection(db, 'businessDebts'), where('businessId', '==', businessId), where('userId', '==', user.uid));
       const querySnapshot = await getDocs(q);
-      setDebts(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+      docs.sort((a,b) => {
+         const aTime = a.createdAt?.toMillis() || 0;
+         const bTime = b.createdAt?.toMillis() || 0;
+         return bTime - aTime;
+      });
+      setDebts(docs);
     } catch (error) {
       console.error("Error fetching debts:", error);
     } finally {

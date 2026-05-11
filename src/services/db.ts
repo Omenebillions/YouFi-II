@@ -35,7 +35,13 @@ export const fetchTransactions = async (userId: string): Promise<any[]> => {
   try {
     const q = query(collection(db, collections.transactions), where('userId', '==', userId), orderBy('date', 'desc'));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+    docs.sort((a,b) => {
+       const aTime = a.createdAt?.toMillis() || 0;
+       const bTime = b.createdAt?.toMillis() || 0;
+       return bTime - aTime;
+    });
+    return docs;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, collections.transactions);
     return [];
@@ -46,7 +52,13 @@ export const fetchRecentTransactions = async (userId: string, maxResults: number
   try {
     const q = query(collection(db, collections.transactions), where('userId', '==', userId), orderBy('date', 'desc'), limit(maxResults));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+    docs.sort((a,b) => {
+       const aTime = a.createdAt?.toMillis() || 0;
+       const bTime = b.createdAt?.toMillis() || 0;
+       return bTime - aTime;
+    });
+    return docs;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, collections.transactions);
     return [];

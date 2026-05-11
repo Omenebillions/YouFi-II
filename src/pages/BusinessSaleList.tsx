@@ -285,7 +285,8 @@ export default function BusinessSaleList() {
   const totals = getTotals();
 
   const filteredSales = sales.filter(s => {
-     const matchesSearch = s.productName?.toLowerCase().includes(searchTerm.toLowerCase());
+     const searchTerms = searchTerm.toLowerCase().split(',').map(term => term.trim()).filter(term => term);
+     const matchesSearch = searchTerms.length === 0 || searchTerms.some(term => s.productName?.toLowerCase().includes(term));
      const matchesDate = dateFilter ? s.date === dateFilter : true;
      return matchesSearch && matchesDate;
   });
@@ -338,7 +339,7 @@ export default function BusinessSaleList() {
             <Search className="text-gray-400 w-5 h-5 mr-2 shrink-0" />
             <input 
                type="text" 
-               placeholder="Search..." 
+               placeholder="Search (use commas for multiple items)..." 
                value={searchTerm}
                onChange={(e) => setSearchTerm(e.target.value)}
                className="w-full py-3 bg-transparent text-sm font-medium outline-none placeholder-gray-400 flex-1 min-w-0"

@@ -67,7 +67,13 @@ export default function BusinessDashboard() {
     // Recent Transactions Listener
     const qRecent = query(collection(db, 'businessTransactions'), where('businessId', '==', businessId), where('userId', '==', user.uid), orderBy('date', 'desc'), limit(5));
     const unsubscribeRecent = onSnapshot(qRecent, (snapshot) => {
-      setRecentTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+      docs.sort((a,b) => {
+         const aTime = a.createdAt?.toMillis() || 0;
+         const bTime = b.createdAt?.toMillis() || 0;
+         return bTime - aTime;
+      });
+      setRecentTransactions(docs);
       setLoading(false);
     });
 

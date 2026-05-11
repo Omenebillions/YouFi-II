@@ -63,11 +63,7 @@ export default function BusinessTransactionList() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       let results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // Secondary sort by how they were entered (createdAt)
       results.sort((a: any, b: any) => {
-         if (a.date !== b.date) {
-           return b.date.localeCompare(a.date);
-         }
          const aTime = a.createdAt?.toMillis() || 0;
          const bTime = b.createdAt?.toMillis() || 0;
          return bTime - aTime;
@@ -235,7 +231,10 @@ export default function BusinessTransactionList() {
   const totals = getTotals();
 
   const filteredTransactions = transactions.filter(tx => {
-     const matchesSearch = tx.category.toLowerCase().includes(searchTerm.toLowerCase()) || (tx.note && tx.note.toLowerCase().includes(searchTerm.toLowerCase()));
+     const searchTerms = searchTerm.toLowerCase().split(',').map(s => s.trim()).filter(s => s);
+     const matchesSearch = searchTerms.length === 0 || searchTerms.some(term => 
+        tx.category.toLowerCase().includes(term) || (tx.note && tx.note.toLowerCase().includes(term))
+     );
      const matchesDate = dateFilter ? tx.date === dateFilter : true;
      return matchesSearch && matchesDate;
   });
@@ -348,7 +347,7 @@ export default function BusinessTransactionList() {
             <Search className="text-gray-400 w-5 h-5 mr-2 shrink-0" />
             <input 
                type="text" 
-               placeholder="Search..." 
+               placeholder="Search (use commas for multiple items)..." 
                value={searchTerm}
                onChange={(e) => setSearchTerm(e.target.value)}
                className="w-full py-3 bg-transparent text-sm font-medium outline-none placeholder-gray-400 flex-1 min-w-0"
