@@ -7,7 +7,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword
 } from 'firebase/auth';
-import { auth, googleProvider } from '../services/firebase';
+import { auth, googleProvider, appleProvider } from '../services/firebase';
 import { createUserProfile, fetchUser } from '../services/db';
 
 interface AuthContextType {
@@ -15,6 +15,7 @@ interface AuthContextType {
   userProfile: any | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
   signUpEmail: (email: string, pass: string, name: string) => Promise<void>;
   signInEmail: (email: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -61,6 +62,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const signInWithApple = async () => {
+    try {
+      await signInWithPopup(auth, appleProvider);
+    } catch (error) {
+      console.error("Apple sign in error", error);
+    }
+  };
+
   const signUpEmail = async (email: string, pass: string, name: string) => {
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
       const data = {
@@ -85,7 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, signInWithGoogle, signUpEmail, signInEmail, logout }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, signInWithGoogle, signInWithApple, signUpEmail, signInEmail, logout }}>
       {!loading && children}
     </AuthContext.Provider>
   );
