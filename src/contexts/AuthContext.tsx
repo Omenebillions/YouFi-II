@@ -5,9 +5,10 @@ import {
   signInWithPopup, 
   signOut,
   createUserWithEmailAndPassword,
-  signInWithEmailAndPassword
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail
 } from 'firebase/auth';
-import { auth, googleProvider, appleProvider } from '../services/firebase';
+import { auth, googleProvider } from '../services/firebase';
 import { createUserProfile, fetchUser } from '../services/db';
 
 interface AuthContextType {
@@ -15,9 +16,9 @@ interface AuthContextType {
   userProfile: any | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
-  signInWithApple: () => Promise<void>;
   signUpEmail: (email: string, pass: string, name: string) => Promise<void>;
   signInEmail: (email: string, pass: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -57,16 +58,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithGoogle = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error("Google sign in error", error);
-    }
-  };
-
-  const signInWithApple = async () => {
-    try {
-      await signInWithPopup(auth, appleProvider);
-    } catch (error) {
-      console.error("Apple sign in error", error);
+    } catch (error: any) {
+      if (error.code === 'auth/cancelled-popup-request') {
+        return;
+      }
+      if (error.code === 'auth/popup-closed-by-user') {
+        return;
+      }
+      
+      let message = "Google sign in error";
+      if (error.code === 'auth/unauthorized-domain') {
+        message = "This domain is not authorized for Google Sign-in in your Firebase Console.";
+      } else if (error.code === 'auth/network-request-failed') {
+        message = "Network error or Firebase domain unreachable. Check your connection.";
+      }
+      
+      console.error(message, error);
+      throw new Error(message + " (" + error.code + ")");
     }
   };
 
@@ -85,6 +93,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await signInWithEmailAndPassword(auth, email, pass);
   };
 
+  const resetPassword = async (email: string) => {
+      await sendPasswordResetEmail(auth, email);
+  };
+
   const logout = async () => {
     try {
       await signOut(auth);
@@ -94,7 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, signInWithGoogle, signInWithApple, signUpEmail, signInEmail, logout }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, signInWithGoogle, signUpEmail, signInEmail, resetPassword, logout }}>
       {!loading && children}
     </AuthContext.Provider>
   );

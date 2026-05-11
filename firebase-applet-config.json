@@ -1,10 +1,9 @@
 {
-  "projectId": "youplan-492217",
-  "appId": "1:754974900688:web:da9f98caf54c27cc1c79d5",
-  "apiKey": "AIzaSyC7xKqosQ-ZXI2j6Swvx963B6zkDVtsS1g",
-  "authDomain": "youplan-492217.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-18d878cb-6990-43c7-93cc-c0d6aa0fffb1",
-  "storageBucket": "youplan-492217.firebasestorage.app",
-  "messagingSenderId": "754974900688",
-  "measurementId": ""
+  "projectId": "youfi-748e3",
+  "appId": "1:75847136387:web:2cf069588947bbddf217b6",
+  "apiKey": "AIzaSyBCCPs3igVRPxxNa7Jzbm-BYLMxYXOkfA4",
+  "authDomain": "youfi-748e3.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "youfi-748e3.firebasestorage.app",
+  "messagingSenderId": "75847136387"
 }
