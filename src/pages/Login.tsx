@@ -99,7 +99,6 @@ export default function Login() {
         {error && (
             <div className="w-full bg-danger-50 text-danger-500 text-xs font-medium p-3 rounded-xl mb-4 text-left">
                 {error}
-                {error.includes("auth/") && <p className="mt-1">Note: Please ensure Email/Password Auth is enabled in your Firebase Console.</p>}
             </div>
         )}
 
@@ -190,7 +189,7 @@ export default function Login() {
         
         <div className="mt-6 flex items-center justify-center gap-2 text-xs text-gray-400">
           <ShieldAlert size={14} />
-          <span>Secured by Firebase</span>
+          <span>Secured with Supabase</span>
         </div>
       </div>
     </div>

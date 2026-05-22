@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, ArrowLeft, Trash2, Edit2, Lightbulb, ChevronRight, X, Bot, Sparkles, MoveRight } from 'lucide-react';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
-import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
 
 export default function BusinessIdeas() {
@@ -25,17 +23,30 @@ export default function BusinessIdeas() {
   const [generating, setGenerating] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
 
-  useEffect(() => {
+  const fetchIdeas = async () => {
     if (!user) return;
     setLoading(true);
+    const { data } = await supabase.from('business_ideas')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    if (data) setIdeas(data);
+    setLoading(false);
+  };
 
-    const q = query(collection(db, 'businessIdeas'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setIdeas(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    });
+  useEffect(() => {
+    if (!user) return;
+    fetchIdeas();
 
-    return () => unsubscribe();
+    const channel = supabase.channel('business-ideas-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_ideas', filter: `user_id=eq.${user.id}` }, () => {
+        fetchIdeas();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const handleGenerateIdea = async () => {
@@ -43,8 +54,6 @@ export default function BusinessIdeas() {
     setGenerating(true);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
-      
       const prompt = `You are a vast, comprehensive, and highly capable business planner, expert in planning all types of businesses from small local shops to massive global enterprises. 
       Create a detailed, realistic, and actionable business plan for a new venture based on this concept: "${aiPrompt}".
       
@@ -58,12 +67,17 @@ export default function BusinessIdeas() {
       
       Format beautifully in Markdown.`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
-        contents: prompt
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: prompt
+        })
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
       
-      const text = response.text || "";
+      const text = data.text || "";
       
       const nameMatch = text.match(/Business Name(?:\sidea)?:\s*([^\n]+)/i);
       const title = nameMatch ? nameMatch[1].replace(/[*]/g, '').trim() : "New Business Idea";
@@ -89,24 +103,24 @@ export default function BusinessIdeas() {
     setLoading(true);
     try {
       if (viewIdea && viewIdea.id) {
-         await updateDoc(doc(db, 'businessIdeas', viewIdea.id), {
+         await supabase.from('business_ideas').update({
             title: formData.title,
             description: formData.description,
             plan: formData.plan
-         });
+         }).eq('id', viewIdea.id);
       } else {
-         await addDoc(collection(db, 'businessIdeas'), {
+         await supabase.from('business_ideas').insert({
             title: formData.title,
             description: formData.description,
             plan: formData.plan,
-            userId: user.uid,
-            createdAt: serverTimestamp()
+            user_id: user.id
          });
       }
       setShowModal(false);
       setViewIdea(null);
       setFormData({ title: '', description: '', plan: '' });
       setAiPrompt('');
+      fetchIdeas();
     } catch (error) {
       console.error("Error saving idea:", error);
     } finally {
@@ -118,9 +132,10 @@ export default function BusinessIdeas() {
     if (!ideaToDelete) return;
     setLoading(true);
     try {
-      await deleteDoc(doc(db, 'businessIdeas', ideaToDelete.id));
+      await supabase.from('business_ideas').delete().eq('id', ideaToDelete.id);
       setShowDeleteModal(false);
       setIdeaToDelete(null);
+      fetchIdeas();
     } catch (error) {
       console.error("Error deleting idea:", error);
     } finally {

@@ -4,12 +4,12 @@ import {
   ArrowLeft, Plus, CreditCard, 
   Search, Calendar, CheckCircle2, AlertCircle, Trash2, Edit2, X
 } from 'lucide-react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, orderBy, deleteDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+
+import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 
 export default function BusinessDebtList() {
   const { businessId } = useParams();
@@ -42,15 +42,12 @@ export default function BusinessDebtList() {
     if (!businessId || !user) return;
     setLoading(true);
     try {
-      const q = query(collection(db, 'businessDebts'), where('businessId', '==', businessId), where('userId', '==', user.uid));
-      const querySnapshot = await getDocs(q);
-      const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-      docs.sort((a,b) => {
-         const aTime = a.createdAt?.toMillis() || 0;
-         const bTime = b.createdAt?.toMillis() || 0;
-         return bTime - aTime;
-      });
-      setDebts(docs);
+      const { data } = await supabase.from('business_debts')
+        .select('*')
+        .eq('business_id', businessId)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (data) setDebts(data);
     } catch (error) {
       console.error("Error fetching debts:", error);
     } finally {
@@ -67,17 +64,20 @@ export default function BusinessDebtList() {
     setLoading(true);
     try {
       if (editingDebt) {
-        await updateDoc(doc(db, 'businessDebts', editingDebt.id), {
-          ...formData,
-          amount
-        });
+        await supabase.from('business_debts').update({
+          lender: formData.lender,
+          amount: amount,
+          due_date: formData.dueDate,
+          status: formData.status
+        }).eq('id', editingDebt.id);
       } else {
-        await addDoc(collection(db, 'businessDebts'), {
-          ...formData,
-          amount,
-          businessId,
-          userId: user.uid,
-          createdAt: serverTimestamp()
+        await supabase.from('business_debts').insert({
+          lender: formData.lender,
+          amount: amount,
+          due_date: formData.dueDate,
+          status: formData.status,
+          business_id: businessId,
+          user_id: user.id
         });
       }
       
@@ -86,11 +86,7 @@ export default function BusinessDebtList() {
       setFormData({ lender: '', amount: '', dueDate: '', status: 'unpaid' });
       fetchDebts();
     } catch (error) {
-      if (editingDebt) {
-        handleFirestoreError(error, OperationType.UPDATE, `businessDebts/${editingDebt.id}`);
-      } else {
-        handleFirestoreError(error, OperationType.CREATE, `businessDebts`);
-      }
+       console.error("Error saving debt:", error);
     } finally {
       setLoading(false);
     }
@@ -100,12 +96,12 @@ export default function BusinessDebtList() {
     if (!debtToDelete) return;
     setLoading(true);
     try {
-      await deleteDoc(doc(db, 'businessDebts', debtToDelete.id));
+      await supabase.from('business_debts').delete().eq('id', debtToDelete.id);
       setShowDeleteModal(false);
       setDebtToDelete(null);
       fetchDebts();
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `businessDebts/${debtToDelete.id}`);
+       console.error("Error deleting debt:", err);
     } finally {
       setLoading(false);
     }
@@ -116,7 +112,7 @@ export default function BusinessDebtList() {
     setFormData({
       lender: debt.lender,
       amount: debt.amount.toString(),
-      dueDate: debt.dueDate || '',
+      dueDate: debt.due_date || '',
       status: debt.status
     });
     setShowModal(true);
@@ -131,16 +127,15 @@ export default function BusinessDebtList() {
   const toggleDebtStatus = async (debt: any) => {
     const newStatus = debt.status === 'paid' ? 'unpaid' : 'paid';
     try {
-       await updateDoc(doc(db, 'businessDebts', debt.id), { status: newStatus });
+       await supabase.from('business_debts').update({ status: newStatus }).eq('id', debt.id);
        fetchDebts();
     } catch (err) {
        console.error("Error updating debt status:", err);
-       handleFirestoreError(err, OperationType.UPDATE, `businessDebts/${debt.id}`);
     }
   };
 
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(val);
+    return formatCurrencyGlobal(val, currencyCode);
   };
 
   const getTotals = () => {
@@ -164,13 +159,7 @@ export default function BusinessDebtList() {
     let tYear = 0;
 
     debts.forEach(d => {
-      // Use createdAt if available, otherwise just count it generally or skip
-      let dStr = '';
-      if (d.createdAt && d.createdAt.toDate) {
-         dStr = new Date(d.createdAt.toDate().getTime() - (d.createdAt.toDate().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-      } else {
-         return; // If no date, skip in time-based totals
-      }
+      let dStr = new Date(new Date(d.created_at).getTime() - (new Date(d.created_at).getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
       if (dStr === todayStr) tToday += d.amount;
       if (dStr >= startOfWeekStr && dStr <= todayStr) tWeek += d.amount;
@@ -255,7 +244,7 @@ export default function BusinessDebtList() {
                        <h4 className="font-bold text-gray-900 text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]">{d.lender}</h4>
                        <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-[10px] text-gray-400 font-bold uppercase flex items-center gap-1">
-                             <Calendar size={10} /> {d.dueDate || 'No due date'}
+                             <Calendar size={10} /> {d.due_date || 'No due date'}
                           </span>
                           <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md ${d.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                              {d.status}

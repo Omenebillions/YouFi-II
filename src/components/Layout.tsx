@@ -7,8 +7,7 @@ import {
   BarChart3, Calendar, History, LineChart, WifiOff
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../services/supabase';
 
 export default function Layout() {
   const { user, userProfile, logout } = useAuth();
@@ -46,9 +45,8 @@ export default function Layout() {
 
   const loadSidebarBusinesses = async () => {
     try {
-      const q = query(collection(db, 'businesses'), where('userId', '==', user.uid));
-      const querySnapshot = await getDocs(q);
-      setBusinesses(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const { data } = await supabase.from('businesses').select('*').eq('user_id', user.id);
+      if (data) setBusinesses(data);
     } catch (err) {
       console.error("Error loading sidebar businesses:", err);
     }
@@ -84,7 +82,7 @@ export default function Layout() {
         <div className="p-6 h-full flex flex-col pt-20">
           <div className="flex items-center gap-3 mb-8 px-2">
             <div className="w-12 h-12 bg-brand-50 rounded-2xl flex items-center justify-center overflow-hidden">
-               {user?.photoURL ? <img src={user.photoURL} alt="User" /> : <div className="text-brand-600 font-bold">{userProfile?.name?.charAt(0) || 'U'}</div>}
+               {user?.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="User" /> : <div className="text-brand-600 font-bold">{userProfile?.name?.charAt(0) || 'U'}</div>}
             </div>
             <div>
                <h3 className="font-bold text-gray-900">{userProfile?.name || 'User'}</h3>

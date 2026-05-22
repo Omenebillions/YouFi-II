@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ArrowLeft, Plus, Calendar, Clock, RotateCw, X, CheckCircle2, ChevronRight, CalendarDays, Edit2, Trash2
+  ArrowLeft, Plus, Calendar, Clock, RotateCw, X, CheckCircle2, Edit2, Trash2, CalendarDays
 } from 'lucide-react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, orderBy } from 'firebase/firestore';
-import { db } from '../services/firebase';
-import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
+import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency } from '../lib/currency';
-import { format, isSameDay, isSameMonth, isSameYear, addDays, addWeeks, addMonths, addYears, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
-import { Link, useNavigate } from 'react-router-dom';
+import { format, addDays, addWeeks, addMonths, addYears } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 export default function UpcomingPayments() {
@@ -28,7 +26,7 @@ export default function UpcomingPayments() {
     title: '',
     amount: '',
     dueDate: format(new Date(), 'yyyy-MM-dd'),
-    isRecurring: false,
+    is_recurring: false,
     frequency: 'monthly' // daily, weekly, monthly, yearly
   });
 
@@ -37,8 +35,8 @@ export default function UpcomingPayments() {
     setFormData({
       title: payment.title,
       amount: payment.amount.toString(),
-      dueDate: payment.dueDate,
-      isRecurring: payment.isRecurring || false,
+      dueDate: payment.due_date,
+      is_recurring: payment.is_recurring || false,
       frequency: payment.frequency || 'monthly'
     });
     setShowModal(true);
@@ -48,21 +46,29 @@ export default function UpcomingPayments() {
     if (!user) return;
     
     setLoading(true);
-    const q = query(
-      collection(db, 'upcomingPayments'),
-      where('userId', '==', user.uid),
-      orderBy('dueDate', 'asc')
-    );
     
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const fetchPayments = async () => {
+      const { data } = await supabase.from('upcoming_payments')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('due_date', { ascending: true });
+      if (data) setPayments(data);
       setLoading(false);
-    }, (err) => {
-      handleFirestoreError(err, OperationType.GET, 'upcomingPayments');
-      setLoading(false);
-    });
+    };
+
+    fetchPayments();
+
+    const channel = supabase.channel('upcoming-payments')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'upcoming_payments', filter: `user_id=eq.${user.id}` }, () => {
+        supabase.from('upcoming_payments').select('*').eq('user_id', user.id).order('due_date', { ascending: true }).then(({ data }) => {
+          if (data) setPayments(data);
+        });
+      })
+      .subscribe();
     
-    return () => unsubscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -72,31 +78,31 @@ export default function UpcomingPayments() {
     setLoading(true);
     try {
       if (editingPayment) {
-        await updateDoc(doc(db, 'upcomingPayments', editingPayment.id), {
+        await supabase.from('upcoming_payments').update({
           title: formData.title,
           amount: parseFloat(formData.amount),
-          dueDate: formData.dueDate,
-          isRecurring: formData.isRecurring,
-          frequency: formData.isRecurring ? formData.frequency : null,
-        });
+          due_date: formData.dueDate,
+          is_recurring: formData.is_recurring,
+          frequency: formData.is_recurring ? formData.frequency : null,
+        }).eq('id', editingPayment.id);
       } else {
-        await addDoc(collection(db, 'upcomingPayments'), {
-          userId: user.uid,
+        await supabase.from('upcoming_payments').insert({
+          user_id: user.id,
           title: formData.title,
           amount: parseFloat(formData.amount),
-          dueDate: formData.dueDate,
-          isRecurring: formData.isRecurring,
-          frequency: formData.isRecurring ? formData.frequency : null,
-          createdAt: serverTimestamp(),
+          due_date: formData.dueDate,
+          is_recurring: formData.is_recurring,
+          frequency: formData.is_recurring ? formData.frequency : null,
+          created_at: new Date().toISOString(),
         });
       }
       setShowModal(false);
       setEditingPayment(null);
       setFormData({
-        title: '', amount: '', dueDate: format(new Date(), 'yyyy-MM-dd'), isRecurring: false, frequency: 'monthly'
+        title: '', amount: '', dueDate: format(new Date(), 'yyyy-MM-dd'), is_recurring: false, frequency: 'monthly'
       });
     } catch (err) {
-      handleFirestoreError(err, editingPayment ? OperationType.UPDATE : OperationType.CREATE, 'upcomingPayments');
+      console.error("Error saving payment:", err);
     } finally {
       setLoading(false);
     }
@@ -105,9 +111,8 @@ export default function UpcomingPayments() {
   const handleMarkPaid = async (payment: any) => {
     setLoading(true);
     try {
-      if (payment.isRecurring && payment.frequency) {
-        // Calculate next due date
-        const currentDueDate = new Date(payment.dueDate);
+      if (payment.is_recurring && payment.frequency) {
+        const currentDueDate = new Date(payment.due_date);
         let nextDueDate;
         switch(payment.frequency) {
             case 'daily': nextDueDate = addDays(currentDueDate, 1); break;
@@ -117,15 +122,14 @@ export default function UpcomingPayments() {
             default: nextDueDate = addMonths(currentDueDate, 1);
         }
         
-        await updateDoc(doc(db, 'upcomingPayments', payment.id), {
-            dueDate: format(nextDueDate, 'yyyy-MM-dd')
-        });
+        await supabase.from('upcoming_payments').update({
+            due_date: format(nextDueDate, 'yyyy-MM-dd')
+        }).eq('id', payment.id);
       } else {
-        // Not recurring, delete or mark as completed. We'll simply delete it for simplicity.
-        await deleteDoc(doc(db, 'upcomingPayments', payment.id));
+        await supabase.from('upcoming_payments').delete().eq('id', payment.id);
       }
     } catch(err) {
-       handleFirestoreError(err, OperationType.UPDATE, `upcomingPayments/${payment.id}`);
+      console.error("Error marking paid:", err);
     } finally {
         setLoading(false);
     }
@@ -135,11 +139,11 @@ export default function UpcomingPayments() {
       if (!paymentToDelete) return;
       setLoading(true);
       try {
-          await deleteDoc(doc(db, 'upcomingPayments', paymentToDelete.id));
+          await supabase.from('upcoming_payments').delete().eq('id', paymentToDelete.id);
           setShowDeleteModal(false);
           setPaymentToDelete(null);
       } catch(err) {
-          handleFirestoreError(err, OperationType.DELETE, `upcomingPayments/${paymentToDelete.id}`);
+          console.error("Error deleting payment:", err);
       } finally {
           setLoading(false);
       }
@@ -148,8 +152,8 @@ export default function UpcomingPayments() {
   // Group by month
   const groupedPayments: { [month: string]: typeof payments } = {};
   payments.forEach(p => {
-      if (!p.dueDate) return;
-      const monthStr = format(new Date(p.dueDate), 'MMMM yyyy');
+      if (!p.due_date) return;
+      const monthStr = format(new Date(p.due_date), 'MMMM yyyy');
       if (!groupedPayments[monthStr]) groupedPayments[monthStr] = [];
       groupedPayments[monthStr].push(p);
   });
@@ -192,14 +196,14 @@ export default function UpcomingPayments() {
                        {items.map((payment, idx) => (
                            <div key={payment.id} className={`p-4 flex items-center justify-between ${idx !== items.length - 1 ? 'border-b border-gray-50' : ''}`}>
                                <div className="flex items-center gap-3">
-                                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${new Date(payment.dueDate) < new Date() ? 'bg-red-50 text-red-600' : 'bg-brand-50 text-brand-600'}`}>
-                                       {payment.isRecurring ? <RotateCw size={20} /> : <Calendar size={20} />}
+                                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${new Date(payment.due_date) < new Date() ? 'bg-red-50 text-red-600' : 'bg-brand-50 text-brand-600'}`}>
+                                       {payment.is_recurring ? <RotateCw size={20} /> : <Calendar size={20} />}
                                    </div>
                                    <div>
                                        <h4 className="font-bold text-gray-900">{payment.title}</h4>
                                        <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                                           <Clock size={12} /> {format(new Date(payment.dueDate), 'MMM d, yyyy')}
-                                           {payment.isRecurring && <span className="ml-1 text-[10px] px-1.5 py-0.5 bg-gray-100 rounded uppercase">{payment.frequency}</span>}
+                                           <Clock size={12} /> {format(new Date(payment.due_date), 'MMM d, yyyy')}
+                                           {payment.is_recurring && <span className="ml-1 text-[10px] px-1.5 py-0.5 bg-gray-100 rounded uppercase">{payment.frequency}</span>}
                                        </p>
                                    </div>
                                </div>
@@ -261,14 +265,14 @@ export default function UpcomingPayments() {
                       <input required type="date" value={formData.dueDate} onChange={(e) => setFormData({...formData, dueDate: e.target.value})} className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 font-medium" />
                   </div>
 
-                  <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl mt-2 cursor-pointer transition-colors" onClick={() => setFormData({...formData, isRecurring: !formData.isRecurring})}>
-                      <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 ${formData.isRecurring ? 'bg-brand-600 border-brand-600' : 'border-gray-300'}`}>
-                          {formData.isRecurring && <CheckCircle2 size={16} className="text-white" />}
+                  <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl mt-2 cursor-pointer transition-colors" onClick={() => setFormData({...formData, is_recurring: !formData.is_recurring})}>
+                      <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 ${formData.is_recurring ? 'bg-brand-600 border-brand-600' : 'border-gray-300'}`}>
+                          {formData.is_recurring && <CheckCircle2 size={16} className="text-white" />}
                       </div>
                       <span className="font-bold text-gray-700">This is a recurring payment</span>
                   </div>
 
-                  {formData.isRecurring && (
+                  {formData.is_recurring && (
                       <div className="flex flex-col gap-1.5 mt-2 animate-in slide-in-from-top-2">
                           <label className="text-xs font-bold text-gray-500 uppercase ml-1">Frequency</label>
                           <select value={formData.frequency} onChange={(e) => setFormData({...formData, frequency: e.target.value})} className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 font-medium appearance-none">

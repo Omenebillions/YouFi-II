@@ -1,15 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  onAuthStateChanged, 
-  User, 
-  signInWithPopup, 
-  signOut,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail
-} from 'firebase/auth';
-import { auth, googleProvider } from '../services/firebase';
+import { supabase } from '../services/supabase';
+import { User } from '@supabase/supabase-js';
 import { createUserProfile, fetchUser } from '../services/db';
+import { retryRequest } from '../lib/network';
 
 interface AuthContextType {
   user: User | null;
@@ -20,6 +13,7 @@ interface AuthContextType {
   signInEmail: (email: string, pass: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,83 +24,139 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        let profile = await fetchUser(currentUser.uid);
-        if (!profile) {
-            // First time login
-            const data = {
-                email: currentUser.email || '',
-                name: currentUser.displayName || 'New User',
-                income: 0,
-                currency: 'USD' 
-            };
-            await createUserProfile(currentUser.uid, data);
-            profile = { id: currentUser.uid, ...data };
-        }
-        setUserProfile(profile);
-      } else {
-        setUserProfile(null);
+    let timeoutId: NodeJS.Timeout;
+    
+    const initializeAuth = async () => {
+      try {
+        // Add timeout to prevent infinite loading
+        timeoutId = setTimeout(() => {
+          setLoading(false);
+          console.warn("Auth initialization timeout");
+        }, 5000);
+        
+        const { data: { session } } = await supabase.auth.getSession();
+        await handleAuthChange(session?.user ?? null);
+        
+        if (timeoutId) clearTimeout(timeoutId);
+      } catch (error) {
+        console.error("Auth initialization error:", error);
+        setLoading(false);
       }
-      setLoading(false);
+    };
+    
+    initializeAuth();
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleAuthChange(session?.user ?? null);
     });
 
-    return () => unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []);
 
+  const handleAuthChange = async (currentUser: User | null) => {
+    setUser(currentUser);
+    if (currentUser) {
+      try {
+        let profile = await retryRequest(() => fetchUser(currentUser.id));
+        if (!profile) {
+          // First time login
+          const data = {
+            email: currentUser.email || '',
+            name: currentUser.user_metadata?.full_name || 'New User',
+            income: 0,
+            currency: 'USD'
+          };
+          await retryRequest(() => createUserProfile(currentUser.id, data));
+          profile = { id: currentUser.id, ...data };
+        }
+        setUserProfile(profile);
+      } catch (error) {
+        console.error("Error fetching user profile:", error);
+      }
+    } else {
+      setUserProfile(null);
+    }
+    setLoading(false);
+  };
+
+  const refreshProfile = async () => {
+    if (user) {
+      try {
+        const profile = await retryRequest(() => fetchUser(user.id));
+        if (profile) setUserProfile(profile);
+      } catch (error) {
+        console.error("Error refreshing profile", error);
+      }
+    }
+  };
+
   const signInWithGoogle = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error: any) {
-      if (error.code === 'auth/cancelled-popup-request') {
-        return;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`
       }
-      if (error.code === 'auth/popup-closed-by-user') {
-        return;
-      }
-      
-      let message = "Google sign in error";
-      if (error.code === 'auth/unauthorized-domain') {
-        message = "This domain is not authorized for Google Sign-in in your Firebase Console.";
-      } else if (error.code === 'auth/network-request-failed') {
-        message = "Network error or Firebase domain unreachable. Check your connection.";
-      }
-      
-      console.error(message, error);
-      throw new Error(message + " (" + error.code + ")");
+    });
+
+    if (error) {
+      console.error("Google sign in error", error);
+      throw error;
     }
   };
 
   const signUpEmail = async (email: string, pass: string, name: string) => {
-      const cred = await createUserWithEmailAndPassword(auth, email, pass);
-      const data = {
-          email: cred.user.email || '',
-          name: name,
-          income: 0,
-          currency: 'USD' 
-      };
-      await createUserProfile(cred.user.uid, data);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password: pass,
+        options: {
+          data: {
+            full_name: name
+          },
+          emailRedirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
+
+      if (error) throw error;
+    } catch (error: any) {
+      console.error("Sign up error:", error);
+      throw new Error(error.message || "Failed to sign up");
+    }
   };
 
   const signInEmail = async (email: string, pass: string) => {
-      await signInWithEmailAndPassword(auth, email, pass);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password: pass
+      });
+      if (error) throw error;
+    } catch (error: any) {
+      console.error("Sign in error:", error);
+      throw new Error(error.message || "Failed to sign in");
+    }
   };
 
   const resetPassword = async (email: string) => {
-      await sendPasswordResetEmail(auth, email);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/callback`, // Or a specific reset page
+    });
+    if (error) throw error;
   };
 
   const logout = async () => {
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
     } catch (error) {
       console.error("Sign out error", error);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, signInWithGoogle, signUpEmail, signInEmail, resetPassword, logout }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, signInWithGoogle, signUpEmail, signInEmail, resetPassword, logout, refreshProfile }}>
       {!loading && children}
     </AuthContext.Provider>
   );

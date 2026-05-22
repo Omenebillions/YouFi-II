@@ -3,19 +3,15 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, Trash2, 
   ShoppingBag, Search, Calendar,
-  TrendingUp, TrendingDown, ShoppingCart, Edit2, X
+  TrendingUp, TrendingDown, Edit2, X
 } from 'lucide-react';
-import { 
-  collection, query, where, getDocs, 
-  addDoc, serverTimestamp, deleteDoc, updateDoc,
-  doc, orderBy, limit, writeBatch, increment
-} from 'firebase/firestore';
-import { db } from '../services/firebase';
-import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
+import { supabase } from '../services/supabase';
 import { moveToTrash } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+
+import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 
 export default function BusinessSaleList() {
   const { businessId } = useParams();
@@ -58,25 +54,21 @@ export default function BusinessSaleList() {
     if (!businessId || !user) return;
     setLoading(true);
     try {
-      const salesQ = query(
-        collection(db, 'sales'), 
-        where('businessId', '==', businessId),
-        where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc'),
-        limit(50)
-      );
-      const salesSnapshot = await getDocs(salesQ);
-      setSales(salesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const { data: salesData } = await supabase.from('sales')
+        .select('*')
+        .eq('business_id', businessId)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (salesData) setSales(salesData);
 
-      const prodQ = query(
-        collection(db, 'products'), 
-        where('businessId', '==', businessId),
-        where('userId', '==', user.uid)
-      );
-      const prodSnapshot = await getDocs(prodQ);
-      setProducts(prodSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const { data: prodData } = await supabase.from('products')
+        .select('*')
+        .eq('business_id', businessId)
+        .eq('user_id', user.id);
+      if (prodData) setProducts(prodData);
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, 'sales');
+       console.error("Error fetching sales/products:", error);
     } finally {
       setLoading(false);
     }
@@ -91,110 +83,81 @@ export default function BusinessSaleList() {
     if (!user || !businessId || !product || isNaN(qty) || qty <= 0) return;
 
     if (!product.isService) {
-      // Check stock if creating or increasing quantity
-      const stockAvailable = editingSale ? product.stock + editingSale.quantity : product.stock;
+      const stockAvailable = editingSale ? (product.stock || 0) + editingSale.quantity : (product.stock || 0);
       if (stockAvailable < qty) {
         alert("Insufficient stock!");
         return;
       }
     }
 
-    const sellingPrice = formData.unitPrice !== '' ? parseFloat(formData.unitPrice) : (product.sellingPrice || product.price || 0);
-    const costPrice = product.costPrice || 0;
+    const sellingPrice = formData.unitPrice !== '' ? parseFloat(formData.unitPrice) : (product.selling_price || product.price || 0);
+    const costPrice = product.cost_price || 0;
     const totalPrice = sellingPrice * qty;
     const profit = (sellingPrice - costPrice) * qty;
 
     setLoading(true);
     try {
-      const batch = writeBatch(db);
-
       if (editingSale) {
         // Revert old values
-        const oldProductRef = doc(db, 'products', editingSale.productId);
-        const oldProduct = products.find(p => p.id === editingSale.productId);
-        if (oldProduct && !oldProduct.isService) {
-          batch.update(oldProductRef, { stock: increment(editingSale.quantity) });
+        if (!product.isService) {
+            const oldQty = editingSale.quantity;
+            await supabase.from('products').update({ stock: (product.stock || 0) + oldQty }).eq('id', editingSale.product_id);
         }
         
-        const businessRef = doc(db, 'businesses', businessId);
-        batch.update(businessRef, { balance: increment(-editingSale.totalPrice) });
+        const { data: biz } = await supabase.from('businesses').select('balance').eq('id', businessId).single();
+        await supabase.from('businesses').update({ balance: (biz?.balance || 0) - editingSale.total_price }).eq('id', businessId);
 
         // Update record
-        batch.update(doc(db, 'sales', editingSale.id), {
-          productId: formData.productId,
-          productName: product.name,
+        await supabase.from('sales').update({
+          product_id: formData.productId,
+          product_name: product.name,
           quantity: qty,
-          unitPrice: sellingPrice,
-          totalPrice,
+          unit_price: sellingPrice,
+          total_price: totalPrice,
+          profit,
+          date: formData.date
+        }).eq('id', editingSale.id);
+
+        // Apply new values
+        if (!product.is_service) {
+            const { data: freshProd } = await supabase.from('products').select('stock').eq('id', formData.productId).single();
+            await supabase.from('products').update({ stock: (freshProd?.stock || 0) - qty }).eq('id', formData.productId);
+        }
+        const { data: freshBiz } = await supabase.from('businesses').select('balance').eq('id', businessId).single();
+        await supabase.from('businesses').update({ balance: (freshBiz?.balance || 0) + totalPrice }).eq('id', businessId);
+      } else {
+        // Add sale record
+        await supabase.from('sales').insert({
+          business_id: businessId,
+          user_id: user.id,
+          product_id: formData.productId,
+          product_name: product.name,
+          quantity: qty,
+          unit_price: sellingPrice,
+          total_price: totalPrice,
           profit,
           date: formData.date
         });
 
-        // Apply new values
-        if (!product.isService) {
-          batch.update(doc(db, 'products', formData.productId), { stock: increment(-qty) });
-        }
-        batch.update(businessRef, { balance: increment(totalPrice) });
-
-      } else {
-        // Add sale record
-        const saleRef = doc(collection(db, 'sales'));
-        batch.set(saleRef, {
-          businessId,
-          userId: user.uid,
-          productId: formData.productId,
-          productName: product.name,
-          quantity: qty,
-          unitPrice: sellingPrice,
-          totalPrice,
-          profit,
-          date: formData.date,
-          createdAt: serverTimestamp()
-        });
-
         // Update product stock
-        if (!product.isService) {
-          const productRef = doc(db, 'products', formData.productId);
-          batch.update(productRef, {
-            stock: increment(-qty)
-          });
+        if (!product.is_service) {
+          await supabase.from('products').update({ stock: (product.stock || 0) - qty }).eq('id', formData.productId);
         }
 
         // Update Business Balance
-        const businessRef = doc(db, 'businesses', businessId);
-        batch.update(businessRef, {
-          balance: increment(totalPrice)
-        });
+        const { data: biz } = await supabase.from('businesses').select('balance').eq('id', businessId).single();
+        await supabase.from('businesses').update({ balance: (biz?.balance || 0) + totalPrice }).eq('id', businessId);
       }
-
-      await batch.commit();
 
       setShowModal(false);
       setEditingSale(null);
       setFormData({ productId: '', quantity: '1', unitPrice: '', date: new Date().toISOString().split('T')[0] });
       fetchSalesAndProducts();
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'sales');
+       console.error("Error saving sale:", error);
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleEdit = (sale: any) => {
-    setEditingSale(sale);
-    setFormData({
-      productId: sale.productId,
-      quantity: sale.quantity.toString(),
-      unitPrice: sale.unitPrice?.toString() || '',
-      date: sale.date
-    });
-    setShowModal(true);
-  };
-
-  const handleAddClick = () => {
-    setEditingSale(null);
-    setFormData({ productId: '', quantity: '1', unitPrice: '', date: new Date().toISOString().split('T')[0] });
-    setShowModal(true);
   };
 
   const handleDeleteSale = async () => {
@@ -202,53 +165,55 @@ export default function BusinessSaleList() {
     const sale = saleToDelete;
     setIsSubmitting(true);
     try {
-      // Move to trash first
       await moveToTrash('sales', sale.id, sale);
 
       // Revert stock
-      const product = products.find(p => p.id === sale.productId);
-      if (product && !product.isService) {
-         try {
-           await updateDoc(doc(db, 'products', sale.productId), {
-             stock: increment(Number(sale.quantity || 1))
-           });
-         } catch (err) {
-           console.error("Stock update failed", err);
-           throw err;
-         }
+      const product = products.find(p => p.id === sale.product_id);
+      if (product && !product.is_service) {
+          await supabase.from('products').update({ stock: (product.stock || 0) + Number(sale.quantity || 1) }).eq('id', sale.product_id);
       }
       
       // Revert balance
-      try {
-        await updateDoc(doc(db, 'businesses', businessId!), {
-          balance: increment(-Number(sale.totalPrice || 0))
-        });
-      } catch (err) {
-        console.error("Balance update failed", err);
-        throw err;
-      }
+      const { data: biz } = await supabase.from('businesses').select('balance').eq('id', businessId!).single();
+      await supabase.from('businesses').update({ balance: (biz?.balance || 0) - Number(sale.total_price || 0) }).eq('id', businessId!);
 
       // Delete record
-      try {
-        await deleteDoc(doc(db, 'sales', sale.id));
-      } catch (err) {
-        console.error("Sale delete failed", err);
-        throw err;
-      }
+      await supabase.from('sales').delete().eq('id', sale.id);
 
       fetchSalesAndProducts();
       setShowDeleteModal(false);
       setSaleToDelete(null);
     } catch (error) {
-      alert("Could not delete sale. Check error in console.");
-      handleFirestoreError(error, OperationType.DELETE, `sales/${sale.id}`);
+      console.error("Error deleting sale:", error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleAddClick = () => {
+    setEditingSale(null);
+    setFormData({ 
+      productId: products.length > 0 ? products[0].id : '', 
+      quantity: '1', 
+      unitPrice: '',
+      date: new Date().toISOString().split('T')[0] 
+    });
+    setShowModal(true);
+  };
+
+  const handleEdit = (sale: any) => {
+    setEditingSale(sale);
+    setFormData({
+      productId: sale.product_id,
+      quantity: sale.quantity.toString(),
+      unitPrice: sale.unit_price ? sale.unit_price.toString() : '',
+      date: sale.date
+    });
+    setShowModal(true);
+  };
+
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(val);
+    return formatCurrencyGlobal(val, currencyCode);
   };
 
   const getTotals = () => {
@@ -273,10 +238,11 @@ export default function BusinessSaleList() {
 
     sales.forEach(s => {
       const d = s.date;
-      if (d === todayStr) tToday += s.totalPrice;
-      if (d >= startOfWeekStr && d <= todayStr) tWeek += s.totalPrice;
-      if (d >= startOfQuarterStr && d <= todayStr) tQuarter += s.totalPrice;
-      if (d >= startOfYearStr && d <= todayStr) tYear += s.totalPrice;
+      const totalP = s.total_price || 0;
+      if (d === todayStr) tToday += totalP;
+      if (d >= startOfWeekStr && d <= todayStr) tWeek += totalP;
+      if (d >= startOfQuarterStr && d <= todayStr) tQuarter += totalP;
+      if (d >= startOfYearStr && d <= todayStr) tYear += totalP;
     });
 
     return { today: tToday, week: tWeek, quarter: tQuarter, year: tYear };
@@ -286,12 +252,12 @@ export default function BusinessSaleList() {
 
   const filteredSales = sales.filter(s => {
      const searchTerms = searchTerm.toLowerCase().split(',').map(term => term.trim()).filter(term => term);
-     const matchesSearch = searchTerms.length === 0 || searchTerms.some(term => s.productName?.toLowerCase().includes(term));
+     const matchesSearch = searchTerms.length === 0 || searchTerms.some(term => s.product_name?.toLowerCase().includes(term));
      const matchesDate = dateFilter ? s.date === dateFilter : true;
      return matchesSearch && matchesDate;
   });
 
-  const searchTotal = filteredSales.reduce((acc, s) => acc + (s.totalPrice || 0), 0);
+  const searchTotal = filteredSales.reduce((acc, s) => acc + (s.total_price || 0), 0);
 
   return (
     <div className="flex flex-col tracking-tight pt-4 pb-24">
@@ -393,10 +359,10 @@ export default function BusinessSaleList() {
                     </div>
                     <div>
                        <h4 className="font-bold text-gray-900 text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]">
-                          {s.productName || 'Item'}
+                          {s.product_name || 'Item'}
                        </h4>
                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-gray-900 font-bold text-sm">{formatCurrency(s.totalPrice)}</span>
+                          <span className="text-gray-900 font-bold text-sm">{formatCurrency(s.total_price)}</span>
                           <span className="text-[10px] text-gray-400 font-medium">{s.date}</span>
                        </div>
                        {s.profit !== undefined && (
@@ -429,7 +395,7 @@ export default function BusinessSaleList() {
         onConfirm={handleDeleteSale}
         title="Delete Sale"
         message="Are you sure you want to delete this sale? This will revert business stock and balance, and the record will be moved to the Trash Bin."
-        itemName={saleToDelete ? `${saleToDelete.quantity}x ${saleToDelete.productName}` : undefined}
+        itemName={saleToDelete ? `${saleToDelete.quantity}x ${saleToDelete.product_name}` : undefined}
       />
 
       <AnimatePresence>
@@ -468,8 +434,8 @@ export default function BusinessSaleList() {
                      >
                         <option value="">Select an item...</option>
                         {products.map(p => (
-                          <option key={p.id} value={p.id} disabled={!p.isService && p.stock <= 0 && (!editingSale || editingSale.productId !== p.id)}>
-                            {p.name} ({formatCurrency(p.sellingPrice || p.price)}) - {p.isService ? 'Service' : `${editingSale && editingSale.productId === p.id ? p.stock + editingSale.quantity : p.stock} in stock`}
+                          <option key={p.id} value={p.id} disabled={!p.is_service && p.stock <= 0 && (!editingSale || editingSale.product_id !== p.id)}>
+                            {p.name} ({formatCurrency(p.selling_price || p.price)}) - {p.is_service ? 'Service' : `${editingSale && editingSale.product_id === p.id ? p.stock + editingSale.quantity : p.stock} in stock`}
                           </option>
                         ))}
                      </select>

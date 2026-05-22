@@ -27,6 +27,7 @@ import UpcomingPayments from './pages/UpcomingPayments';
 import TrashBin from './pages/TrashBin';
 
 import BusinessIdeas from './pages/BusinessIdeas';
+import AuthCallback from './pages/AuthCallback';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -48,6 +49,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           
           <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
             <Route index element={<Dashboard />} />

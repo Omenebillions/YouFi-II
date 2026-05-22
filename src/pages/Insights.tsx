@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { fetchTransactions } from '../services/db';
 import { formatCurrency } from '../lib/currency';
 import { isSameMonth, subMonths, format, startOfMonth, eachMonthOfInterval } from 'date-fns';
+import { Link } from 'react-router-dom';
 import { LineChart, ArrowUp, ArrowDown, TrendingUp, AlertCircle, CheckCircle2, History, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function Insights() {
@@ -16,7 +17,7 @@ export default function Insights() {
 
   useEffect(() => {
     if (user) {
-       fetchTransactions(user.uid).then(t => {
+       fetchTransactions(user.id).then(t => {
          setTransactions(t || []);
          setLoading(false);
        });
@@ -269,9 +270,9 @@ export default function Insights() {
                
                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Transaction Reports</h4>
                <div className="flex flex-wrap gap-2">
-                  <a href="#history/all" className="text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-full hover:bg-gray-100 transition-colors">All Transactions</a>
-                  <a href="#history/income" className="text-xs font-semibold text-green-600 bg-green-50 px-3 py-1.5 rounded-full hover:bg-green-100 transition-colors">Income</a>
-                  <a href="#history/expense" className="text-xs font-semibold text-red-600 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors">Expenses</a>
+                  <Link to="/history/all" className="text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-full hover:bg-gray-100 transition-colors">All Transactions</Link>
+                  <Link to="/history/income" className="text-xs font-semibold text-green-600 bg-green-50 px-3 py-1.5 rounded-full hover:bg-green-100 transition-colors">Income</Link>
+                  <Link to="/history/expense" className="text-xs font-semibold text-red-600 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors">Expenses</Link>
                </div>
             </div>
           </div>

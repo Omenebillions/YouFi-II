@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
-  Plus, Building2, Briefcase, Lightbulb,
+  Plus, Building2, Lightbulb,
   ChevronRight, ArrowLeft, Trash2, Edit2,
-  TrendingUp, TrendingDown, DollarSign, BarChart2, X
+  TrendingUp, TrendingDown, BarChart2, X
 } from 'lucide-react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -14,6 +13,8 @@ import {
   CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+
+import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 
 export default function BusinessList() {
   const navigate = useNavigate();
@@ -35,81 +36,99 @@ export default function BusinessList() {
 
     setLoading(true);
 
-    // Businesses Listener
-    const qBiz = query(collection(db, 'businesses'), where('userId', '==', user.uid));
-    const unsubscribeBiz = onSnapshot(qBiz, (snapshot) => {
-      setBusinesses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    });
+    const fetchData = async () => {
+      const [bizRes, txRes, salesRes] = await Promise.all([
+        supabase.from('businesses').select('*').eq('user_id', user.id),
+        supabase.from('business_transactions').select('*').eq('user_id', user.id).order('date', { ascending: true }),
+        supabase.from('sales').select('*').eq('user_id', user.id).order('date', { ascending: true })
+      ]);
 
-    // Global Stats & Trends Listener (Transactions)
-    const qTx = query(collection(db, 'businessTransactions'), where('userId', '==', user.uid), orderBy('date', 'asc'));
-    const unsubscribeTx = onSnapshot(qTx, (txSnapshot) => {
-      const qSales = query(collection(db, 'sales'), where('userId', '==', user.uid), orderBy('date', 'asc'));
+      if (bizRes.data) setBusinesses(bizRes.data);
       
-      const unsubscribeSales = onSnapshot(qSales, (salesSnapshot) => {
-        let totalInc = 0;
-        let totalExp = 0;
-        let totalSalesRev = 0;
-        const bizBalances: { [key: string]: number } = {};
+      processStats(txRes.data || [], salesRes.data || []);
+      setLoading(false);
+    };
 
-        const monthlyData: { [key: string]: { date: string, income: number, expenses: number } } = {};
+    fetchData();
 
-        txSnapshot.docs.forEach(d => {
-          const data = d.data();
-          const bid = data.businessId;
-          if (bid) {
-            if (!bizBalances[bid]) bizBalances[bid] = 0;
-            bizBalances[bid] += (data.type === 'income' ? data.amount : -data.amount);
-          }
-          if (!data.date) return;
-          const month = data.date.substring(0, 7);
-          if (!monthlyData[month]) {
-            monthlyData[month] = { date: month, income: 0, expenses: 0 };
-          }
-          if (data.type === 'income') {
-            totalInc += data.amount;
-            monthlyData[month].income += data.amount;
-          } else {
-            totalExp += data.amount;
-            monthlyData[month].expenses += data.amount;
-          }
+    // Subscriptions
+    const bizChannel = supabase.channel('biz-list')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'businesses', filter: `user_id=eq.${user.id}` }, () => {
+        supabase.from('businesses').select('*').eq('user_id', user.id).then(({ data }) => {
+          if (data) setBusinesses(data);
         });
+      })
+      .subscribe();
 
-        salesSnapshot.docs.forEach(d => {
-          const data = d.data();
-          const bid = data.businessId;
-          if (bid) {
-            if (!bizBalances[bid]) bizBalances[bid] = 0;
-            bizBalances[bid] += data.totalPrice;
-          }
-          if (!data.date) return;
-          const month = data.date.substring(0, 7);
-          if (!monthlyData[month]) {
-            monthlyData[month] = { date: month, income: 0, expenses: 0 };
-          }
-          totalSalesRev += data.totalPrice;
-          monthlyData[month].income += data.totalPrice;
-        });
+    const txChannel = supabase.channel('biz-stats')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_transactions', filter: `user_id=eq.${user.id}` }, () => refreshStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales', filter: `user_id=eq.${user.id}` }, () => refreshStats())
+      .subscribe();
 
-        setBusinessBalances(bizBalances);
-        setGlobalStats({
-          income: totalInc + totalSalesRev,
-          expenses: totalExp,
-          profit: (totalInc + totalSalesRev) - totalExp
-        });
-
-        setChartData(Object.values(monthlyData).sort((a, b) => a.date.localeCompare(b.date)));
-      });
-
-      return () => unsubscribeSales();
-    });
+    const refreshStats = async () => {
+      const [txRes, salesRes] = await Promise.all([
+        supabase.from('business_transactions').select('*').eq('user_id', user.id).order('date', { ascending: true }),
+        supabase.from('sales').select('*').eq('user_id', user.id).order('date', { ascending: true })
+      ]);
+      processStats(txRes.data || [], salesRes.data || []);
+    };
 
     return () => {
-      unsubscribeBiz();
-      unsubscribeTx();
+      supabase.removeChannel(bizChannel);
+      supabase.removeChannel(txChannel);
     };
   }, [user]);
+
+  const processStats = (txs: any[], sales: any[]) => {
+    let totalInc = 0;
+    let totalExp = 0;
+    let totalSalesRev = 0;
+    const bizBalances: { [key: string]: number } = {};
+    const monthlyData: { [key: string]: { date: string, income: number, expenses: number } } = {};
+
+    txs.forEach(data => {
+      const bid = data.business_id;
+      if (bid) {
+        if (!bizBalances[bid]) bizBalances[bid] = 0;
+        bizBalances[bid] += (data.type === 'income' ? data.amount : -data.amount);
+      }
+      if (!data.date) return;
+      const month = data.date.substring(0, 7);
+      if (!monthlyData[month]) {
+        monthlyData[month] = { date: month, income: 0, expenses: 0 };
+      }
+      if (data.type === 'income') {
+        totalInc += data.amount;
+        monthlyData[month].income += data.amount;
+      } else {
+        totalExp += data.amount;
+        monthlyData[month].expenses += data.amount;
+      }
+    });
+
+    sales.forEach(data => {
+      const bid = data.business_id;
+      if (bid) {
+        if (!bizBalances[bid]) bizBalances[bid] = 0;
+        bizBalances[bid] += data.total_price;
+      }
+      if (!data.date) return;
+      const month = data.date.substring(0, 7);
+      if (!monthlyData[month]) {
+        monthlyData[month] = { date: month, income: 0, expenses: 0 };
+      }
+      totalSalesRev += data.total_price;
+      monthlyData[month].income += data.total_price;
+    });
+
+    setBusinessBalances(bizBalances);
+    setGlobalStats({
+      income: totalInc + totalSalesRev,
+      expenses: totalExp,
+      profit: (totalInc + totalSalesRev) - totalExp
+    });
+    setChartData(Object.values(monthlyData).sort((a, b) => a.date.localeCompare(b.date)));
+  };
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -127,15 +146,14 @@ export default function BusinessList() {
     setLoading(true);
     try {
       if (editingBiz) {
-        await updateDoc(doc(db, 'businesses', editingBiz.id), {
-          ...formData
-        });
+        await supabase.from('businesses')
+          .update(formData)
+          .eq('id', editingBiz.id);
       } else {
-        await addDoc(collection(db, 'businesses'), {
+        await supabase.from('businesses').insert({
           ...formData,
-          userId: user.uid,
-          balance: 0,
-          createdAt: serverTimestamp()
+          user_id: user.id,
+          balance: 0
         });
       }
       setShowModal(false);
@@ -163,7 +181,7 @@ export default function BusinessList() {
     if (!bizToDelete) return;
     setLoading(true);
     try {
-      await deleteDoc(doc(db, 'businesses', bizToDelete.id));
+      await supabase.from('businesses').delete().eq('id', bizToDelete.id);
       setShowDeleteModal(false);
       setBizToDelete(null);
     } catch (error) {
@@ -180,11 +198,7 @@ export default function BusinessList() {
   };
 
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-US', { 
-      style: 'currency', 
-      currency: userProfile?.currency || 'USD',
-      maximumFractionDigits: 0
-    }).format(val);
+    return formatCurrencyGlobal(val, userProfile?.currency || 'USD');
   };
 
   return (
