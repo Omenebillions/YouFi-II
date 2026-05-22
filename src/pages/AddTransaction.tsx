@@ -12,6 +12,7 @@ export default function AddTransaction() {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(false);
   const [recentAdded, setRecentAdded] = useState<any[]>([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -19,7 +20,7 @@ export default function AddTransaction() {
 
   useEffect(() => {
     if (user) {
-      fetchTransactions(user.uid).then(res => setRecentAdded(res || []));
+      fetchTransactions(user.id).then(res => setRecentAdded(res || []));
     }
   }, [user]);
 
@@ -96,18 +97,19 @@ export default function AddTransaction() {
       amount: parseFloat(amount),
       category: category.toLowerCase(),
       note,
-      date: new Date().toISOString()
+      date
     });
     
     // Refresh the list immediately after adding
     if (user) {
-       const txs = await fetchTransactions(user.uid);
+       const txs = await fetchTransactions(user.id);
        setRecentAdded(txs || []);
     }
     
     setLoading(false);
     setAmount('');
     setNote('');
+    setDate(new Date().toISOString().split('T')[0]);
     if (type === 'income') setCategory('');
   };
 
@@ -203,6 +205,18 @@ export default function AddTransaction() {
              {categories[type].map(c => <option key={c} value={c.toLowerCase()}>{c}</option>)}
            </select>
         )}
+        
+        <div className="w-full mb-4">
+          <label className="text-xs font-semibold text-gray-500 block mb-1">Transaction Date</label>
+          <input 
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            onFocus={handleFocus}
+            className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500 transition-all font-medium text-gray-700"
+            required
+          />
+        </div>
         
         <div className="w-full mb-6 relative">
           <label className="text-xs font-semibold text-gray-500 block mb-1">Details / Note</label>

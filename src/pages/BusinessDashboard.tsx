@@ -3,13 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Building2, TrendingUp, TrendingDown, 
   Package, ShoppingCart, ArrowRightLeft, Plus, 
-  Calendar, MoreVertical, PieChart, CreditCard, AlertCircle, Activity
+  MoreVertical, PieChart, CreditCard, AlertCircle, Activity
 } from 'lucide-react';
-import { doc, onSnapshot, collection, query, where, orderBy, limit, addDoc, serverTimestamp, updateDoc, increment, getDoc, getDocs } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+
+import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 
 export default function BusinessDashboard() {
   const { businessId } = useParams();
@@ -33,57 +34,55 @@ export default function BusinessDashboard() {
 
     setLoading(true);
 
-    // Business Meta Listener
-    const unsubscribeBiz = onSnapshot(doc(db, 'businesses', businessId), (docSnap) => {
-      if (docSnap.exists()) {
-        setBusiness({ id: docSnap.id, ...docSnap.data() });
-      }
-    });
+    const fetchData = async () => {
+      const [bizRes, txRes, prodRes, salesRes, debtRes, recentRes] = await Promise.all([
+        supabase.from('businesses').select('*').eq('id', businessId).single(),
+        supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id),
+        supabase.from('products').select('*', { count: 'exact', head: true }).eq('business_id', businessId).eq('user_id', user.id),
+        supabase.from('sales').select('*').eq('business_id', businessId).eq('user_id', user.id),
+        supabase.from('business_debts').select('*').eq('business_id', businessId).eq('user_id', user.id).eq('status', 'unpaid'),
+        supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id).order('date', { ascending: false }).limit(5)
+      ]);
 
-    // Stats Listener: Transactions
-    const qTx = query(collection(db, 'businessTransactions'), where('businessId', '==', businessId), where('userId', '==', user.uid));
-    const unsubscribeTx = onSnapshot(qTx, (snapshot) => {
-      setBTxs(snapshot.docs.map(d => d.data()));
-    });
-
-    // Stats Listener: Products
-    const qProd = query(collection(db, 'products'), where('businessId', '==', businessId), where('userId', '==', user.uid));
-    const unsubscribeProd = onSnapshot(qProd, (snapshot) => {
-      setProductsCount(snapshot.size);
-    });
-
-    // Stats Listener: Sales
-    const qSales = query(collection(db, 'sales'), where('businessId', '==', businessId), where('userId', '==', user.uid));
-    const unsubscribeSales = onSnapshot(qSales, (snapshot) => {
-      setBSales(snapshot.docs.map(d => d.data()));
-    });
-
-    // Stats Listener: Debts
-    const qDebt = query(collection(db, 'businessDebts'), where('businessId', '==', businessId), where('userId', '==', user.uid), where('status', '==', 'unpaid'));
-    const unsubscribeDebt = onSnapshot(qDebt, (snapshot) => {
-      setBDebts(snapshot.docs.map(d => d.data()));
-    });
-
-    // Recent Transactions Listener
-    const qRecent = query(collection(db, 'businessTransactions'), where('businessId', '==', businessId), where('userId', '==', user.uid), orderBy('date', 'desc'), limit(5));
-    const unsubscribeRecent = onSnapshot(qRecent, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-      docs.sort((a,b) => {
-         const aTime = a.createdAt?.toMillis() || 0;
-         const bTime = b.createdAt?.toMillis() || 0;
-         return bTime - aTime;
-      });
-      setRecentTransactions(docs);
+      if (bizRes.data) setBusiness(bizRes.data);
+      if (txRes.data) setBTxs(txRes.data);
+      if (prodRes.count !== null) setProductsCount(prodRes.count);
+      if (salesRes.data) setBSales(salesRes.data);
+      if (debtRes.data) setBDebts(debtRes.data);
+      if (recentRes.data) setRecentTransactions(recentRes.data);
       setLoading(false);
-    });
+    };
+
+    fetchData();
+
+    // Subscriptions
+    const bizChannel = supabase.channel(`biz-dashboard-${businessId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'businesses', filter: `id=eq.${businessId}` }, (payload) => {
+        if (payload.new) setBusiness(payload.new);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_transactions', filter: `business_id=eq.${businessId}` }, () => refreshData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales', filter: `business_id=eq.${businessId}` }, () => refreshData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `business_id=eq.${businessId}` }, () => refreshData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_debts', filter: `business_id=eq.${businessId}` }, () => refreshData())
+      .subscribe();
+
+    const refreshData = async () => {
+      const [txRes, prodRes, salesRes, debtRes, recentRes] = await Promise.all([
+        supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id),
+        supabase.from('products').select('*', { count: 'exact', head: true }).eq('business_id', businessId).eq('user_id', user.id),
+        supabase.from('sales').select('*').eq('business_id', businessId).eq('user_id', user.id),
+        supabase.from('business_debts').select('*').eq('business_id', businessId).eq('user_id', user.id).eq('status', 'unpaid'),
+        supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id).order('date', { ascending: false }).limit(5)
+      ]);
+      if (txRes.data) setBTxs(txRes.data);
+      if (prodRes.count !== null) setProductsCount(prodRes.count);
+      if (salesRes.data) setBSales(salesRes.data);
+      if (debtRes.data) setBDebts(debtRes.data);
+      if (recentRes.data) setRecentTransactions(recentRes.data);
+    };
 
     return () => {
-      unsubscribeBiz();
-      unsubscribeTx();
-      unsubscribeProd();
-      unsubscribeSales();
-      unsubscribeDebt();
-      unsubscribeRecent();
+      supabase.removeChannel(bizChannel);
     };
   }, [businessId, user]);
 
@@ -105,21 +104,23 @@ export default function BusinessDashboard() {
 
     // Process Sales (Sales = Revenue)
     bSales.forEach(s => {
-       salesRev += s.totalPrice;
-       salesProfit += s.profit || 0;
+       const totalPrice = s.total_price || 0;
+       const profit = s.profit || 0;
+       salesRev += totalPrice;
+       salesProfit += profit;
        
        const dateStr = s.date;
        if (dateStr) {
            if (dateStr.startsWith(currentMonthPrefix)) {
-               monthlySalesRev += s.totalPrice;
-               monthlySalesProfit += s.profit || 0;
+               monthlySalesRev += totalPrice;
+               monthlySalesProfit += profit;
            }
            const monthStr = new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
            const sortKey = dateStr.substring(0, 7);
            if (!chartMap[sortKey]) {
               chartMap[sortKey] = { name: monthStr, sortKey, income: 0, expense: 0 };
            }
-           chartMap[sortKey].income += s.totalPrice;
+           chartMap[sortKey].income += totalPrice;
        }
     });
 
@@ -185,28 +186,36 @@ export default function BusinessDashboard() {
            return;
         }
 
-        await updateDoc(doc(db, 'businesses', businessId), { balance: increment(-amount) });
-        await addDoc(collection(db, 'businessTransactions'), {
-           businessId, userId: user.uid, type: 'expense', amount, category: 'Transfer to Personal',
+        await supabase.from('businesses')
+          .update({ balance: (business.balance || 0) - amount })
+          .eq('id', businessId);
+
+        await supabase.from('business_transactions').insert({
+           business_id: businessId, user_id: user.id, type: 'expense', amount, category: 'Transfer to Personal',
            note: transferData.note || 'Transfer to personal account',
-           date: new Date().toISOString().split('T')[0], createdAt: serverTimestamp()
+           date: new Date().toISOString().split('T')[0]
         });
-        await addDoc(collection(db, 'transactions'), {
-           userId: user.uid, type: 'income', amount, category: 'From Business',
+
+        await supabase.from('transactions').insert({
+           user_id: user.id, type: 'income', amount, category: 'From Business',
            note: `From ${business.name}: ${transferData.note}`,
-           date: new Date().toISOString().split('T')[0], createdAt: serverTimestamp()
+           date: new Date().toISOString().split('T')[0]
         });
       } else {
-        await updateDoc(doc(db, 'businesses', businessId), { balance: increment(amount) });
-        await addDoc(collection(db, 'businessTransactions'), {
-           businessId, userId: user.uid, type: 'income', amount, category: 'Transfer from Personal',
+        await supabase.from('businesses')
+          .update({ balance: (business.balance || 0) + amount })
+          .eq('id', businessId);
+
+        await supabase.from('business_transactions').insert({
+           business_id: businessId, user_id: user.id, type: 'income', amount, category: 'Transfer from Personal',
            note: transferData.note || 'Transfer from personal account',
-           date: new Date().toISOString().split('T')[0], createdAt: serverTimestamp()
+           date: new Date().toISOString().split('T')[0]
         });
-        await addDoc(collection(db, 'transactions'), {
-           userId: user.uid, type: 'expense', amount, category: 'To Business',
+        
+        await supabase.from('transactions').insert({
+           user_id: user.id, type: 'expense', amount, category: 'To Business',
            note: `To ${business.name}: ${transferData.note}`,
-           date: new Date().toISOString().split('T')[0], createdAt: serverTimestamp()
+           date: new Date().toISOString().split('T')[0]
         });
       }
       setShowTransferModal(false);
@@ -219,7 +228,7 @@ export default function BusinessDashboard() {
   };
 
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(val);
+    return formatCurrencyGlobal(val, currencyCode);
   };
 
   const netProfit = stats.monthlyNetProfit;

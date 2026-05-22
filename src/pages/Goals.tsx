@@ -6,7 +6,7 @@ import { formatCurrency } from '../lib/currency';
 import { GoogleGenAI, Type } from '@google/genai';
 import { motivationQuotes } from '../lib/quotes';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Removed client-side GoogleGenAI
 
 export default function Goals() {
   const { user, userProfile } = useAuth();
@@ -40,7 +40,7 @@ export default function Goals() {
 
   const loadData = async () => {
     if (user) {
-        const [g, p] = await Promise.all([getGoals(user.uid), getPlans(user.uid)]);
+        const [g, p] = await Promise.all([getGoals(user.id), getPlans(user.id)]);
         if (g) setGoals(g);
         if (p) setPlans(p);
     }
@@ -99,9 +99,9 @@ export default function Goals() {
           // Keep existing completed milestones if possible, or regenerate
           const goalToUpdate = goals.find(g => g.id === editingGoalId);
           let newMilestones = goalToUpdate?.milestones || [];
-          let savedAmount = goalToUpdate?.savedAmount || 0;
+          let savedAmount = goalToUpdate?.saved_amount || 0;
           
-          if (goalToUpdate && (goalToUpdate.targetAmount !== targetAmount || goalToUpdate.deadline !== newGoal.deadline || goalToUpdate.frequency !== newGoal.frequency)) {
+          if (goalToUpdate && (goalToUpdate.target_amount !== targetAmount || goalToUpdate.deadline !== newGoal.deadline || goalToUpdate.frequency !== newGoal.frequency)) {
                // Must regenerate milestones if target, deadline, or freq changes. We'll reset progress for simplicity or try to carry over.
                // Carrying over completed amount is complex if frequency changes. Let's just reset uncompleted ones.
                newMilestones = generateMilestones(targetAmount, newGoal.deadline, newGoal.frequency);
@@ -110,8 +110,8 @@ export default function Goals() {
 
           await updateGoal(editingGoalId, {
               title: newGoal.title,
-              targetAmount,
-              savedAmount,
+              target_amount: targetAmount,
+              saved_amount: savedAmount,
               deadline: newGoal.deadline,
               emoji: newGoal.emoji,
               frequency: newGoal.frequency,
@@ -121,8 +121,8 @@ export default function Goals() {
           const milestones = generateMilestones(targetAmount, newGoal.deadline, newGoal.frequency);
           await addGoal({
               title: newGoal.title,
-              targetAmount,
-              savedAmount: 0,
+              target_amount: targetAmount,
+              saved_amount: 0,
               deadline: newGoal.deadline,
               emoji: newGoal.emoji,
               frequency: newGoal.frequency,
@@ -146,12 +146,12 @@ export default function Goals() {
       
       const newSavedAmount = updatedMilestones.filter((m: any) => m.completed).reduce((sum: number, m: any) => sum + m.amount, 0);
       
-      const updatedGoals = goals.map(g => g.id === goal.id ? { ...g, milestones: updatedMilestones, savedAmount: newSavedAmount } : g);
+      const updatedGoals = goals.map(g => g.id === goal.id ? { ...g, milestones: updatedMilestones, saved_amount: newSavedAmount } : g);
       setGoals(updatedGoals);
 
       await updateGoal(goal.id, {
           milestones: updatedMilestones,
-          savedAmount: newSavedAmount
+          saved_amount: newSavedAmount
       });
   };
 
@@ -168,7 +168,7 @@ export default function Goals() {
       setEditingGoalId(goal.id);
       setNewGoal({
           title: goal.title,
-          targetAmount: String(goal.targetAmount),
+          targetAmount: String(goal.target_amount),
           deadline: goal.deadline,
           emoji: goal.emoji || '🎯',
           frequency: goal.frequency || 'monthly'
@@ -177,8 +177,8 @@ export default function Goals() {
   };
 
   const togglePlanTask = async (plan: any, taskId: string) => {
-      if (!plan.planData?.tasksList) return;
-      const updatedTasks = plan.planData.tasksList.map((t: any) => {
+      if (!plan.plan_data?.tasksList) return;
+      const updatedTasks = plan.plan_data.tasksList.map((t: any) => {
           if (t.id === taskId) {
               return { ...t, completed: !t.completed };
           }
@@ -191,8 +191,8 @@ export default function Goals() {
       
       const newPlanData = {
           ...plan,
-          planData: { ...plan.planData, tasksList: updatedTasks },
-          completedTasks: completedCount,
+          plan_data: { ...plan.plan_data, tasksList: updatedTasks },
+          completed_tasks: completedCount,
           progress,
           status
       };
@@ -200,8 +200,8 @@ export default function Goals() {
       setPlans(plans.map(p => p.id === plan.id ? newPlanData : p));
       
       await updatePlan(plan.id, {
-          planData: newPlanData.planData,
-          completedTasks: completedCount,
+          plan_data: newPlanData.plan_data,
+          completed_tasks: completedCount,
           progress,
           status
       });
@@ -223,7 +223,7 @@ export default function Goals() {
       
       if (editingPlanId) {
           const planToUpdate = plans.find(p => p.id === editingPlanId);
-          const existingTasks = planToUpdate?.planData?.tasksList || [];
+          const existingTasks = planToUpdate?.plan_data?.tasksList || [];
           const tasksList = validTasks.map(t => {
               const existing = existingTasks.find((et: any) => et.title === t.trim());
               return { id: existing ? existing.id : Math.random().toString(36).substring(7), title: t.trim(), completed: existing ? existing.completed : false };
@@ -237,8 +237,8 @@ export default function Goals() {
               status: progress === 100 ? 'completed' : 'active',
               progress,
               tasks: tasksList.length,
-              completedTasks: completedCount,
-              planData: { tasksList, ...(newPlan.deadline ? { deadline: newPlan.deadline } : {}) }
+              completed_tasks: completedCount,
+              plan_data: { tasksList, ...(newPlan.deadline ? { deadline: newPlan.deadline } : {}) }
           });
       } else {
           const tasksList = validTasks.map(t => ({ id: Math.random().toString(36).substring(7), title: t.trim(), completed: false }));
@@ -248,8 +248,8 @@ export default function Goals() {
               status: 'active',
               progress: 0,
               tasks: tasksList.length,
-              completedTasks: 0,
-              planData: { tasksList, ...(newPlan.deadline ? { deadline: newPlan.deadline } : {}) }
+              completed_tasks: 0,
+              plan_data: { tasksList, ...(newPlan.deadline ? { deadline: newPlan.deadline } : {}) }
           });
       }
       
@@ -265,8 +265,8 @@ export default function Goals() {
       setNewPlan({
           title: plan.title,
           description: plan.description || '',
-          deadline: plan.planData?.deadline || '',
-          tasks: plan.planData?.tasksList?.map((t: any) => t.title) || ['']
+          deadline: plan.plan_data?.deadline || '',
+          tasks: plan.plan_data?.tasksList?.map((t: any) => t.title) || ['']
       });
       setIsAddingPlan(true);
   };
@@ -283,7 +283,7 @@ export default function Goals() {
       if (!user) return;
       setIsGeneratingPlan(true);
       try {
-          const txs = await fetchTransactions(user.uid) || [];
+          const txs = await fetchTransactions(user.id) || [];
           const txStr = txs.slice(0, 20).map((tx: any) => `${tx.date}: ${tx.type} of ${tx.amount} for ${tx.category}`).join('\n');
           
           const prompt = `You are an elite financial strategist. Analyze the user's situation and generate a personalized financial plan/strategy. 
@@ -293,44 +293,49 @@ ${txStr}
 
 Generate a structured financial plan. The output must match the JSON schema explicitly. Generate between 3 to 7 specific, actionable tasks in tasksList.`;
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-3.1-pro-preview',
-            contents: { parts: [{ text: prompt }] },
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                         title: { type: Type.STRING, description: 'E.g. Aggressive Debt Payoff or Wealth Accumulation' },
-                         description: { type: Type.STRING, description: 'Short summary of the strategic approach' },
-                         tasksList: { 
-                            type: Type.ARRAY, 
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    id: { type: Type.STRING, description: 'Random unique string' },
-                                    title: { type: Type.STRING, description: 'Actionable task title' },
-                                    completed: { type: Type.BOOLEAN, description: 'Always false' }
-                                },
-                                required: ['id', 'title', 'completed']
-                            }
-                         }
-                    },
-                    required: ['title', 'description', 'tasksList']
+        const res = await fetch('/api/gemini/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: { parts: [{ text: prompt }] },
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                             title: { type: "STRING", description: 'E.g. Aggressive Debt Payoff or Wealth Accumulation' },
+                             description: { type: "STRING", description: 'Short summary of the strategic approach' },
+                             tasksList: { 
+                                type: "ARRAY", 
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        id: { type: "STRING", description: 'Random unique string' },
+                                        title: { type: "STRING", description: 'Actionable task title' },
+                                        completed: { type: "BOOLEAN", description: 'Always false' }
+                                    },
+                                    required: ['id', 'title', 'completed']
+                                }
+                             }
+                        },
+                        required: ['title', 'description', 'tasksList']
+                    }
                 }
-            }
+            })
         });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
         
-        if (response.text) {
-            const planDetails = JSON.parse(response.text);
+        if (data.text) {
+            const planDetails = JSON.parse(data.text);
             await addPlan({
                 title: planDetails.title,
                 description: planDetails.description,
                 status: 'active',
                 progress: 0,
                 tasks: planDetails.tasksList.length,
-                completedTasks: 0,
-                planData: { tasksList: planDetails.tasksList }
+                completed_tasks: 0,
+                plan_data: { tasksList: planDetails.tasksList }
             });
             await loadData();
         }
@@ -390,12 +395,12 @@ Generate a structured financial plan. The output must match the JSON schema expl
              <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex justify-around mb-2">
                 <div className="text-center">
                    <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Total Saved</p>
-                   <p className="text-lg font-bold text-brand-600">{formatCurrency(goals.reduce((sum, g) => sum + (Number(g.savedAmount) || 0), 0), currencyCode)}</p>
+                   <p className="text-lg font-bold text-brand-600">{formatCurrency(goals.reduce((sum, g) => sum + (Number(g.saved_amount) || 0), 0), currencyCode)}</p>
                 </div>
                 <div className="w-px bg-gray-100"></div>
                 <div className="text-center">
                    <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-1">Total Target</p>
-                   <p className="text-lg font-bold text-gray-900">{formatCurrency(goals.reduce((sum, g) => sum + (Number(g.targetAmount) || 0), 0), currencyCode)}</p>
+                   <p className="text-lg font-bold text-gray-900">{formatCurrency(goals.reduce((sum, g) => sum + (Number(g.target_amount) || 0), 0), currencyCode)}</p>
                 </div>
              </div>
           )}
@@ -408,7 +413,7 @@ Generate a structured financial plan. The output must match the JSON schema expl
                   <p className="text-sm text-gray-500 max-w-[200px] mx-auto">Create a savings goal to start tracking your future.</p>
               </div>
           ) : goals.map(goal => {
-              const progress = Math.min((goal.savedAmount / goal.targetAmount) * 100, 100);
+              const progress = Math.min((goal.saved_amount / goal.target_amount) * 100, 100);
               return (
                   <div key={goal.id} className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 relative overflow-hidden group transition-all duration-300">
                       <div className="absolute top-0 right-0 p-6 opacity-5 text-6xl pointer-events-none transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform">
@@ -449,11 +454,11 @@ Generate a structured financial plan. The output must match the JSON schema expl
                       <div className="flex justify-between items-end mb-3 relative z-10">
                           <div>
                               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Current Balance</p>
-                              <p className="text-xl font-bold text-gray-900">{formatCurrency(goal.savedAmount, currencyCode)}</p>
+                              <p className="text-xl font-bold text-gray-900">{formatCurrency(goal.saved_amount, currencyCode)}</p>
                           </div>
                           <div className="text-right">
                               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Target</p>
-                              <p className="text-sm font-bold text-gray-500">{formatCurrency(goal.targetAmount, currencyCode)}</p>
+                              <p className="text-sm font-bold text-gray-500">{formatCurrency(goal.target_amount, currencyCode)}</p>
                           </div>
                       </div>
 
@@ -464,8 +469,7 @@ Generate a structured financial plan. The output must match the JSON schema expl
                       {(() => {
                          let createdAtTime = Date.now();
                          if (goal.createdAt) {
-                            if (goal.createdAt.toMillis) createdAtTime = goal.createdAt.toMillis();
-                            else if (goal.createdAt.seconds) createdAtTime = goal.createdAt.seconds * 1000;
+                            createdAtTime = new Date(goal.createdAt).getTime();
                          }
                          const timeElapsed = Date.now() - createdAtTime;
                          const totalTime = new Date(goal.deadline).getTime() - createdAtTime;

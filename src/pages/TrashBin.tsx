@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Trash2, RefreshCcw } from 'lucide-react';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion } from 'motion/react';
 
@@ -15,18 +14,28 @@ export default function TrashBin() {
   useEffect(() => {
     if (!user) return;
     
-    // Trash Listener
-    const qTrash = query(
-      collection(db, 'trash'), 
-      where('userId', '==', user.uid), 
-      orderBy('createdAt', 'desc')
-    );
-    const unsubscribe = onSnapshot(qTrash, (snapshot) => {
-      setTrashItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const fetchTrash = async () => {
+      const { data } = await supabase.from('trash')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (data) setTrashItems(data);
       setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchTrash();
+
+    const channel = supabase.channel('trash-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trash', filter: `user_id=eq.${user.id}` }, () => {
+        supabase.from('trash').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).then(({ data }) => {
+            if (data) setTrashItems(data);
+        });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   if (loading) {
@@ -67,10 +76,10 @@ export default function TrashBin() {
               <motion.div key={item.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 border border-gray-100 rounded-2xl flex flex-col gap-2">
                  <div className="flex justify-between">
                     <span className="text-xs font-bold uppercase tracking-widest text-brand-600 bg-brand-50 px-2 py-1 rounded-lg">
-                       {item.collectionName}
+                       {item.table_name}
                     </span>
                     <span className="text-xs text-gray-400">
-                      {item.createdAt?.toDate().toLocaleDateString() || ''}
+                      {new Date(item.created_at).toLocaleDateString()}
                     </span>
                  </div>
                  <div className="text-sm text-gray-700 overflow-hidden text-ellipsis whitespace-nowrap bg-gray-50 p-2 rounded-xl mt-2 font-mono">

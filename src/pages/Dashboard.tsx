@@ -1,16 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchTransactions } from '../services/db';
+import { supabase } from '../services/supabase';
+import { tables } from '../services/db';
 import { Bell, ShoppingBag, HeartPulse, Wallet, ArrowDown, CreditCard, BarChart3, TrendingUp, ArrowRightLeft, Building2, TrendingDown, X } from 'lucide-react';
-import { isSameMonth, subMonths, format, addDays, isThisWeek, isThisMonth, isThisYear } from 'date-fns';
+import { isSameMonth, format, addDays, isThisWeek, isThisMonth, isThisYear } from 'date-fns';
 import { formatCurrency } from '../lib/currency';
-import { collection, query, where, doc, updateDoc, increment, addDoc, serverTimestamp, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '../services/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
     BarChart, Bar, XAxis, YAxis, 
-    CartesianGrid, Tooltip, ResponsiveContainer, Legend
+    ResponsiveContainer, Tooltip
 } from 'recharts';
 
 export default function Dashboard() {
@@ -30,58 +29,73 @@ export default function Dashboard() {
 
     setLoading(true);
     
-    // Personal Transactions Listener (for history & chart)
-    const qTx = query(
-      collection(db, 'transactions'), 
-      where('userId', '==', user.uid),
-      orderBy('date', 'desc')
-    );
+    // Initial fetches
+    const fetchAllData = async () => {
+      const [txRes, bizRes, upcomingRes] = await Promise.all([
+        supabase.from(tables.transactions).select('*').eq('user_id', user.id).order('date', { ascending: false }),
+        supabase.from(tables.businesses).select('*').eq('user_id', user.id),
+        supabase.from(tables.upcomingPayments).select('*').eq('user_id', user.id)
+      ]);
 
-    const unsubscribeTx = onSnapshot(qTx, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      data.sort((a: any, b: any) => {
-         const aTime = a.createdAt?.toMillis() || 0;
-         const bTime = b.createdAt?.toMillis() || 0;
-         return bTime - aTime;
-      });
-      setTransactions(data);
-      
-      // Process Chart Data reactively
-      const monthlyData: { [key: string]: { date: string, income: number, expenses: number } } = {};
-      data.forEach((item: any) => {
-          if (!item.date) return;
-          const month = item.date.substring(0, 7);
-          if (!monthlyData[month]) {
-              monthlyData[month] = { date: month, income: 0, expenses: 0 };
+      if (txRes.data) {
+        setTransactions(txRes.data);
+        processChartData(txRes.data);
+      }
+      if (bizRes.data) setBusinesses(bizRes.data);
+      if (upcomingRes.data) setUpcomingPayments(upcomingRes.data);
+      setLoading(false);
+    };
+
+    fetchAllData();
+
+    // Set up real-time subscriptions
+    const txChannel = supabase.channel('dashboard-tx')
+      .on('postgres_changes', { event: '*', schema: 'public', table: tables.transactions, filter: `user_id=eq.${user.id}` }, () => {
+        supabase.from(tables.transactions).select('*').eq('user_id', user.id).order('date', { ascending: false }).then(({ data }) => {
+          if (data) {
+            setTransactions(data);
+            processChartData(data);
           }
-          if (item.type === 'income') monthlyData[month].income += item.amount;
-          if (item.type === 'expense') monthlyData[month].expenses += item.amount;
-      });
-      setChartData(Object.values(monthlyData).sort((a,b) => a.date.localeCompare(b.date)));
-      setLoading(false);
-    }, (err) => {
-      console.error("Personal transactions error:", err);
-      setLoading(false);
-    });
+        });
+      })
+      .subscribe();
 
-    // Businesses Listener
-    const qBiz = query(collection(db, 'businesses'), where('userId', '==', user.uid));
-    const unsubscribeBiz = onSnapshot(qBiz, (snapshot) => {
-      setBusinesses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const bizChannel = supabase.channel('dashboard-biz')
+      .on('postgres_changes', { event: '*', schema: 'public', table: tables.businesses, filter: `user_id=eq.${user.id}` }, () => {
+        supabase.from(tables.businesses).select('*').eq('user_id', user.id).then(({ data }) => {
+          if (data) setBusinesses(data);
+        });
+      })
+      .subscribe();
 
-    // Upcoming Payments Listener
-    const qUpcoming = query(collection(db, 'upcomingPayments'), where('userId', '==', user.uid));
-    const unsubscribeUpcoming = onSnapshot(qUpcoming, (snapshot) => {
-      setUpcomingPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const upcomingChannel = supabase.channel('dashboard-upcoming')
+      .on('postgres_changes', { event: '*', schema: 'public', table: tables.upcomingPayments, filter: `user_id=eq.${user.id}` }, () => {
+        supabase.from(tables.upcomingPayments).select('*').eq('user_id', user.id).then(({ data }) => {
+          if (data) setUpcomingPayments(data);
+        });
+      })
+      .subscribe();
 
     return () => {
-      unsubscribeTx();
-      unsubscribeBiz();
-      unsubscribeUpcoming();
+      supabase.removeChannel(txChannel);
+      supabase.removeChannel(bizChannel);
+      supabase.removeChannel(upcomingChannel);
     };
   }, [user]);
+
+  const processChartData = (data: any[]) => {
+    const monthlyData: { [key: string]: { date: string, income: number, expenses: number } } = {};
+    data.forEach((item: any) => {
+        if (!item.date) return;
+        const month = item.date.substring(0, 7);
+        if (!monthlyData[month]) {
+            monthlyData[month] = { date: month, income: 0, expenses: 0 };
+        }
+        if (item.type === 'income') monthlyData[month].income += item.amount;
+        if (item.type === 'expense') monthlyData[month].expenses += item.amount;
+    });
+    setChartData(Object.values(monthlyData).sort((a,b) => a.date.localeCompare(b.date)));
+  };
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,49 +107,44 @@ export default function Dashboard() {
     try {
       const targetBiz = businesses.find(b => b.id === transferData.businessId);
       
-      // Personal to Business Transfer
-      
       // Update business balance
-      await updateDoc(doc(db, 'businesses', transferData.businessId), {
-         balance: increment(amount)
-      });
+      await supabase.from(tables.businesses)
+        .update({ balance: (targetBiz.balance || 0) + amount })
+        .eq('id', transferData.businessId);
 
       const category = transferData.transferType || 'Investment';
 
       // Add business transaction (income)
-      await addDoc(collection(db, 'businessTransactions'), {
-        businessId: transferData.businessId,
-        userId: user.uid,
+      await supabase.from('business_transactions').insert({
+        business_id: transferData.businessId,
+        user_id: user.id,
         type: 'income',
         amount,
         category: category,
         note: transferData.note || `Transfer from personal as ${category}`,
-        date: new Date().toISOString().split('T')[0],
-        createdAt: serverTimestamp()
+        date: new Date().toISOString().split('T')[0]
       });
 
-      // If it's a loan, also record it in businessDebts
+      // If it's a loan, also record it in business_debts
       if (category === 'Loan') {
-        await addDoc(collection(db, 'businessDebts'), {
+        await supabase.from('business_debts').insert({
           amount,
           lender: 'Personal (Owner)',
-          dueDate: '',
+          due_date: '',
           status: 'unpaid',
-          businessId: transferData.businessId,
-          userId: user.uid,
-          createdAt: serverTimestamp()
+          business_id: transferData.businessId,
+          user_id: user.id
         });
       }
 
       // Add personal transaction (expense)
-      await addDoc(collection(db, 'transactions'), {
-        userId: user.uid,
+      await supabase.from(tables.transactions).insert({
+        user_id: user.id,
         type: 'expense',
         amount,
         category: 'To Business',
         note: `To ${targetBiz.name} (${category}): ${transferData.note}`,
-        date: new Date().toISOString().split('T')[0],
-        createdAt: serverTimestamp()
+        date: new Date().toISOString().split('T')[0]
       });
 
       setShowTransferModal(false);
@@ -293,15 +302,15 @@ export default function Dashboard() {
                      const tmrwStr = format(addDays(now, 1), 'yyyy-MM-dd');
                      
                      // Sort by closeness
-                     const sorted = [...upcomingPayments].sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).slice(0, 3);
+                     const sorted = [...upcomingPayments].sort((a,b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime()).slice(0, 3);
                      
                      return sorted.map((p, idx) => {
-                         const date = new Date(p.dueDate);
+                         const date = new Date(p.due_date);
                          let timeLabel = format(date, 'MMM d');
                          
-                         if (p.dueDate < todayStr) timeLabel = 'Overdue';
-                         else if (p.dueDate === todayStr) timeLabel = 'Today';
-                         else if (p.dueDate === tmrwStr) timeLabel = 'Tomorrow';
+                         if (p.due_date < todayStr) timeLabel = 'Overdue';
+                         else if (p.due_date === todayStr) timeLabel = 'Today';
+                         else if (p.due_date === tmrwStr) timeLabel = 'Tomorrow';
                          else if (isThisWeek(date)) timeLabel = 'This Week';
                          else if (isThisMonth(date)) timeLabel = 'This Month';
                          else if (isThisYear(date)) timeLabel = 'This Year';
@@ -309,12 +318,12 @@ export default function Dashboard() {
                          return (
                              <div key={idx} className="flex items-center justify-between bg-white rounded-2xl p-3 shadow-sm border border-gray-50">
                                  <div className="flex items-center gap-3">
-                                     <div className={`w-2 h-2 rounded-full ${p.dueDate <= todayStr ? 'bg-red-500' : 'bg-brand-400'}`}></div>
+                                     <div className={`w-2 h-2 rounded-full ${p.due_date <= todayStr ? 'bg-red-500' : 'bg-brand-400'}`}></div>
                                      <p className="text-xs font-bold text-gray-800">{p.title}</p>
                                  </div>
                                  <div className="text-right">
                                      <p className="text-xs font-black text-gray-900">{formatCurrency(p.amount, currencyCode)}</p>
-                                     <p className={`text-[10px] font-bold ${p.dueDate <= todayStr ? 'text-red-500' : 'text-gray-400'}`}>{timeLabel}</p>
+                                     <p className={`text-[10px] font-bold ${p.due_date <= todayStr ? 'text-red-500' : 'text-gray-400'}`}>{timeLabel}</p>
                                  </div>
                              </div>
                          )

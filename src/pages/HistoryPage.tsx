@@ -28,7 +28,7 @@ export default function HistoryPage() {
   const loadData = async () => {
     if (!user) return;
     setLoading(true);
-    const txs = await fetchTransactions(user.uid);
+    const txs = await fetchTransactions(user.id);
     if (txs) {
       let filteredTxs = txs;
       

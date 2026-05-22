@@ -2,8 +2,12 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { configureMonacoWorkers } from './lib/monaco';
 // @ts-ignore
 import { registerSW } from 'virtual:pwa-register';
+
+// Setup monaco workers
+configureMonacoWorkers();
 
 // Register service worker for offline support
 const updateSW = registerSW({

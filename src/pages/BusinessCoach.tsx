@@ -1,10 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Brain } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { GoogleGenAI } from '@google/genai';
 import Markdown from 'react-markdown';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../services/supabase';
 import { useParams, useNavigate } from 'react-router-dom';
 
 export default function BusinessCoach() {
@@ -31,9 +29,9 @@ export default function BusinessCoach() {
   useEffect(() => {
     if (!businessId) return;
     const fetchBiz = async () => {
-      const bDoc = await getDoc(doc(db, 'businesses', businessId));
-      if (bDoc.exists()) {
-        setBusiness(bDoc.data());
+      const { data } = await supabase.from('businesses').select('*').eq('id', businessId).maybeSingle();
+      if (data) {
+        setBusiness(data);
       }
     };
     fetchBiz();
@@ -48,19 +46,21 @@ export default function BusinessCoach() {
     setLoading(true);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+      // Fetch some recent context using snake_case
+      const { data: txs } = await supabase.from('business_transactions')
+        .select('*')
+        .eq('business_id', businessId)
+        .eq('user_id', user.id)
+        .limit(10);
       
-      // Fetch some recent context
-      const qTxs = query(collection(db, 'businessTransactions'), where('businessId', '==', businessId), where('userId', '==', user.uid));
-      const txsSnap = await getDocs(qTxs);
-      const txs = txsSnap.docs.map(d => d.data());
-      
-      const qSales = query(collection(db, 'sales'), where('businessId', '==', businessId), where('userId', '==', user.uid));
-      const salesSnap = await getDocs(qSales);
-      const sales = salesSnap.docs.map(d => d.data());
+      const { data: sales } = await supabase.from('sales')
+        .select('*')
+        .eq('business_id', businessId)
+        .eq('user_id', user.id)
+        .limit(5);
 
-      const txStr = txs.slice(0, 10).map((tx: any) => `${tx.date}: ${tx.type} of ${tx.amount} for ${tx.category}`).join('\n');
-      const salesStr = sales.slice(0, 5).map((s: any) => `${s.date}: Sold ${s.quantity} of product for ${s.totalPrice}`).join('\n');
+      const txStr = (txs || []).map((tx: any) => `${tx.date}: ${tx.type} of ${tx.amount} for ${tx.category}`).join('\n');
+      const salesStr = (sales || []).map((s: any) => `${s.date}: Sold ${s.quantity} of product for ${s.total_price}`).join('\n');
       
       const systemInstruction = `You are a world-class CFO and Business Strategist AI.
 You are advising a business owner using the YouFi app.
@@ -77,17 +77,15 @@ ${salesStr}
 
 Goal: Provide elite, CFO-level financial advice. Help the user optimize operations, manage cash flow, reduce expenses, price products correctly, and scale their business. Use structural business frameworks (like EBITDA, CAC, LTV, working capital optimization). Be highly strategic, but explain clearly so an entrepreneur can act on your advice to prosper.`;
       
-      const chat = ai.chats.create({
-        model: "gemini-3.1-pro-preview",
-        config: {
-          systemInstruction,
-          temperature: 0.7,
-        }
+      const res = await fetch('/api/gemini/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userMessage, systemInstruction })
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
       
-      const response = await chat.sendMessage({ message: userMessage });
-      
-      setMessages(prev => [...prev, { role: 'model', text: response.text || "I couldn't process that right now." }]);
+      setMessages(prev => [...prev, { role: 'model', text: data.text || "I couldn't process that right now." }]);
     } catch (e: any) {
       console.error(e);
       if (!navigator.onLine || e.message?.toLowerCase().includes('network') || e.message?.toLowerCase().includes('fetch')) {

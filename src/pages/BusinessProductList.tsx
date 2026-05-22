@@ -4,13 +4,13 @@ import {
   ArrowLeft, Plus, Package, 
   Trash2, Box, Search, Edit2, X
 } from 'lucide-react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, deleteDoc, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
 import { moveToTrash } from '../services/db';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+
+import { formatCurrency as formatCurrencyGlobal, CURRENCIES } from '../lib/currency';
 
 export default function BusinessProductList() {
   const { businessId } = useParams();
@@ -36,9 +36,8 @@ export default function BusinessProductList() {
     if (!businessId || !user) return;
     setLoading(true);
     try {
-      const q = query(collection(db, 'products'), where('businessId', '==', businessId), where('userId', '==', user.uid));
-      const querySnapshot = await getDocs(q);
-      setProducts(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const { data } = await supabase.from('products').select('*').eq('business_id', businessId).eq('user_id', user.id);
+      if (data) setProducts(data);
     } catch (error) {
       console.error("Error fetching products:", error);
     } finally {
@@ -53,23 +52,22 @@ export default function BusinessProductList() {
     setLoading(true);
     try {
       if (editingProduct) {
-        await updateDoc(doc(db, 'products', editingProduct.id), {
+        await supabase.from('products').update({
           name: formData.name,
-          costPrice: formData.costPrice ? parseFloat(formData.costPrice) : 0,
-          sellingPrice: formData.sellingPrice ? parseFloat(formData.sellingPrice) : 0,
+          cost_price: formData.costPrice ? parseFloat(formData.costPrice) : 0,
+          selling_price: formData.sellingPrice ? parseFloat(formData.sellingPrice) : 0,
           stock: formData.isService ? 0 : (parseInt(formData.stock) || 0),
-          isService: formData.isService
-        });
+          is_service: formData.isService
+        }).eq('id', editingProduct.id);
       } else {
-        await addDoc(collection(db, 'products'), {
+        await supabase.from('products').insert({
           name: formData.name,
-          costPrice: formData.costPrice ? parseFloat(formData.costPrice) : 0,
-          sellingPrice: formData.sellingPrice ? parseFloat(formData.sellingPrice) : 0,
+          cost_price: formData.costPrice ? parseFloat(formData.costPrice) : 0,
+          selling_price: formData.sellingPrice ? parseFloat(formData.sellingPrice) : 0,
           stock: formData.isService ? 0 : (parseInt(formData.stock) || 0),
-          isService: formData.isService,
-          businessId,
-          userId: user.uid,
-          createdAt: serverTimestamp()
+          is_service: formData.isService,
+          business_id: businessId,
+          user_id: user.id
         });
       }
       
@@ -78,11 +76,7 @@ export default function BusinessProductList() {
       setFormData({ name: '', costPrice: '', sellingPrice: '', stock: '', isService: false });
       fetchProducts();
     } catch (error) {
-      if (editingProduct) {
-        handleFirestoreError(error, OperationType.UPDATE, `products/${editingProduct.id}`);
-      } else {
-        handleFirestoreError(error, OperationType.CREATE, `products`);
-      }
+       console.error("Error saving product:", error);
     } finally {
       setLoading(false);
     }
@@ -92,10 +86,10 @@ export default function BusinessProductList() {
     setEditingProduct(product);
     setFormData({
       name: product.name,
-      costPrice: product.costPrice?.toString() || '0',
-      sellingPrice: product.sellingPrice?.toString() || product.price?.toString() || '0',
+      costPrice: product.cost_price?.toString() || '0',
+      sellingPrice: product.selling_price?.toString() || product.price?.toString() || '0',
       stock: product.stock?.toString() || '0',
-      isService: product.isService || false
+      isService: product.is_service || false
     });
     setShowModal(true);
   };
@@ -112,19 +106,19 @@ export default function BusinessProductList() {
     setLoading(true);
     try {
       await moveToTrash('products', id, productToDelete);
-      await deleteDoc(doc(db, 'products', id));
+      await supabase.from('products').delete().eq('id', id);
       fetchProducts();
       setShowDeleteModal(false);
       setProductToDelete(null);
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `products/${id}`);
+       console.error("Error deleting product:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(val);
+    return formatCurrencyGlobal(val, currencyCode);
   };
 
   return (
@@ -173,13 +167,13 @@ export default function BusinessProductList() {
                     <div>
                        <h4 className="font-bold text-gray-900 text-sm">{p.name}</h4>
                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-brand-600 font-bold text-xs">{formatCurrency(p.sellingPrice || p.price)}</span>
+                          <span className="text-brand-600 font-bold text-xs">{formatCurrency(p.selling_price || p.price)}</span>
                           <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
                           <span className={`text-[10px] font-bold uppercase rounded-full px-2 py-0.5 ${p.stock > 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
                              {p.stock > 0 ? `${p.stock} In Stock` : 'Out of Stock'}
                           </span>
                        </div>
-                       <p className="text-[10px] text-gray-400 font-medium">Cost: {formatCurrency(p.costPrice || 0)}</p>
+                       <p className="text-[10px] text-gray-400 font-medium">Cost: {formatCurrency(p.cost_price || 0)}</p>
                     </div>
                  </div>
                  <div className="flex items-center gap-2">

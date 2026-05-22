@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, UploadCloud, FileText, Check, X, Tag, FileDigit } from 'lucide-react';
-import { GoogleGenAI, Type } from '@google/genai';
 import * as xlsx from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
 import { addTransaction } from '../services/db';
@@ -178,31 +177,32 @@ export default function AutoImport() {
         // But the prompt wants us to use their cue for robustness. So regex rules directly!
         if (parsed.length === 0) {
             // Enhanced AI Prompt for raw text
-            const apiKey = process.env.GEMINI_API_KEY;
-            if (apiKey) {
-               const ai = new GoogleGenAI({ apiKey });
-               const response = await ai.models.generateContent({
-                  model: 'gemini-3-flash-preview',
+            const res = await fetch('/api/gemini/generate', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({
                   contents: { parts: [{ text: `Parse these transactions. Look for DEBIT/CREDIT indicators, amounts, and dates:\n\n${rawText}` }] },
                   config: {
                     responseMimeType: 'application/json',
                     responseSchema: {
-                      type: Type.ARRAY,
+                      type: "ARRAY",
                       items: {
-                        type: Type.OBJECT,
+                        type: "OBJECT",
                         properties: {
-                          type: { type: Type.STRING, description: "'income', 'expense', or 'debt'" },
-                          amount: { type: Type.NUMBER },
-                          category: { type: Type.STRING },
-                          note: { type: Type.STRING },
-                          date: { type: Type.STRING },
+                          type: { type: "STRING", description: "'income', 'expense', or 'debt'" },
+                          amount: { type: "NUMBER" },
+                          category: { type: "STRING" },
+                          note: { type: "STRING" },
+                          date: { type: "STRING" },
                         }, required: ["type", "amount", "category", "note", "date"]
                       }
                     }
                   }
-               });
-               parsed = JSON.parse(response.text || "[]");
-            }
+               })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            parsed = JSON.parse(data.text || "[]");
         }
         
         if (parsed.length === 0) throw new Error("Could not detect any transactions in the text.");
@@ -226,13 +226,6 @@ export default function AutoImport() {
     setError('');
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error('Gemini API key is not configured.');
-      }
-      
-      const ai = new GoogleGenAI({ apiKey });
-
       let contentParts: any[] = [];
       const extension = file.name.split('.').pop()?.toLowerCase();
       
@@ -275,29 +268,34 @@ export default function AutoImport() {
         if (parsed.length === 0) {
             contentParts.push({ text: "Extract all transaction records from this statement. Look for indicators such as 'DEBIT', 'CREDIT', amounts, and dates. Apply regex patterns to identify them. Categorize each transaction appropriately. The output must be JSON matching the schema." });
     
-            const response = await ai.models.generateContent({
-              model: 'gemini-3-flash-preview',
-              contents: { parts: contentParts },
-              config: {
-                responseMimeType: 'application/json',
-                responseSchema: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      type: { type: Type.STRING, description: "MUST be exactly 'income', 'expense', or 'debt'" },
-                      amount: { type: Type.NUMBER, description: "Absolute amount value" },
-                      category: { type: Type.STRING, description: "Short, general category name (e.g. Salary, Utilities, Food)" },
-                      note: { type: Type.STRING, description: "Original transaction description" },
-                      date: { type: Type.STRING, description: "Date of transaction in YYYY-MM-DD format" },
-                    },
-                    required: ["type", "amount", "category", "note", "date"]
+            const res = await fetch('/api/gemini/generate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: { parts: contentParts },
+                config: {
+                  responseMimeType: 'application/json',
+                  responseSchema: {
+                    type: "ARRAY",
+                    items: {
+                      type: "OBJECT",
+                      properties: {
+                        type: { type: "STRING", description: "MUST be exactly 'income', 'expense', or 'debt'" },
+                        amount: { type: "NUMBER", description: "Absolute amount value" },
+                        category: { type: "STRING", description: "Short, general category name (e.g. Salary, Utilities, Food)" },
+                        note: { type: "STRING", description: "Original transaction description" },
+                        date: { type: "STRING", description: "Date of transaction in YYYY-MM-DD format" },
+                      },
+                      required: ["type", "amount", "category", "note", "date"]
+                    }
                   }
                 }
-              }
+              })
             });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
     
-            const responseText = response.text || "[]";
+            const responseText = data.text || "[]";
             parsed = JSON.parse(responseText.trim());
             
             parsed = parsed.map((p: any) => ({
@@ -362,7 +360,7 @@ export default function AutoImport() {
 
   const submitTransactions = async () => {
     const toSubmit = parsedTxs.filter(t => t.selected);
-    if (toSubmit.length === 0) return;
+    if (toSubmit.length === 0 || !userProfile?.id) return;
     
     setLoading(true);
     try {

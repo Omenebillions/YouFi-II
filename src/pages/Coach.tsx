@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Brain } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { GoogleGenAI } from '@google/genai';
 import Markdown from 'react-markdown';
 import { fetchTransactions } from '../services/db';
 
@@ -31,10 +30,7 @@ export default function Coach() {
     setLoading(true);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
-      
-      // Fetch some recent context
-      const txs = await fetchTransactions(user.uid) || [];
+      const txs = await fetchTransactions(user.id) || [];
       const txStr = txs.slice(0, 10).map((tx: any) => `${tx.date}: ${tx.type} of ${tx.amount} for ${tx.category}`).join('\n');
       
       const systemInstruction = `You are YouFi, an elite personal finance and corporate strategy co-pilot, trained at an MBA standard. 
@@ -43,21 +39,17 @@ Although your reasoning should be sophisticated and MBA-grade, explain concepts 
 User Income: ${userProfile?.income} ${userProfile?.currency}
 Recent Transactions: ${txStr}
 Goal: Help the user optimize capital allocation, manage liquidity risk, and maximize long-term wealth compounding. If they ask if they can afford something, analyze cash flow impact and opportunity cost.`;
-      
-      const chat = ai.chats.create({
-        model: "gemini-3.1-pro-preview",
-        config: {
-          systemInstruction,
-          temperature: 0.7,
-        }
+
+      const res = await fetch('/api/gemini/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userMessage, systemInstruction })
       });
       
-      // Load previous history into context (for simple demonstration)
-      // Actually we are not keeping history in `ai.chats` across re-renders in this simple implementation, 
-      // but we will send the user message.
-      const response = await chat.sendMessage({ message: userMessage });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch AI response');
       
-      setMessages(prev => [...prev, { role: 'model', text: response.text || "I couldn't process that right now." }]);
+      setMessages(prev => [...prev, { role: 'model', text: data.text || "I couldn't process that right now." }]);
     } catch (e: any) {
       console.error(e);
       if (!navigator.onLine || e.message?.toLowerCase().includes('network') || e.message?.toLowerCase().includes('fetch')) {

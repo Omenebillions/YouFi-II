@@ -2,16 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, TrendingUp, TrendingDown,
-  Search, Calendar, ShoppingCart, Trash2, Edit2, X
+  Search, Calendar, Trash2, Edit2, X
 } from 'lucide-react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, updateDoc, doc, increment, orderBy, deleteDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
-import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
 import { moveToTrash } from '../services/db';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 
 export default function BusinessTransactionList() {
   const { businessId, type } = useParams(); // type: 'income' or 'expense'
@@ -42,41 +41,33 @@ export default function BusinessTransactionList() {
     if (!businessId || !type || !user) return;
 
     setLoading(true);
-    let q;
-    if (type === 'all') {
-      q = query(
-        collection(db, 'businessTransactions'), 
-        where('businessId', '==', businessId), 
-        where('userId', '==', user.uid),
-        orderBy('date', 'desc')
-      );
-    } else {
-      q = query(
-        collection(db, 'businessTransactions'), 
-        where('businessId', '==', businessId), 
-        where('userId', '==', user.uid),
-        where('type', '==', type),
-        orderBy('date', 'desc')
-      );
-    }
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      results.sort((a: any, b: any) => {
-         const aTime = a.createdAt?.toMillis() || 0;
-         const bTime = b.createdAt?.toMillis() || 0;
-         return bTime - aTime;
-      });
-
-      setTransactions(results);
+    const fetchTransactions = async () => {
+      let query = supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id);
+      if (type !== 'all') {
+        query = query.eq('type', type);
+      }
+      const { data } = await query.order('date', { ascending: false });
+      if (data) setTransactions(data);
       setLoading(false);
-    }, (err) => {
-      console.error("Error fetching transactions:", err);
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchTransactions();
+
+    const channel = supabase.channel(`biz-tx-${businessId}-${type}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_transactions', filter: `business_id=eq.${businessId}` }, () => {
+        let query = supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id);
+        if (type !== 'all') {
+            query = query.eq('type', type);
+        }
+        query.order('date', { ascending: false }).then(({ data }) => {
+            if (data) setTransactions(data);
+        });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [businessId, type, user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,56 +82,51 @@ export default function BusinessTransactionList() {
       if (editingTx) {
         const diff = amount - editingTx.amount;
         // Update Transaction
-        await updateDoc(doc(db, 'businessTransactions', editingTx.id), {
+        await supabase.from('business_transactions').update({
           amount,
           category: formData.category,
           date: formData.date,
           note: formData.note,
           type: actualType
-        });
+        }).eq('id', editingTx.id);
 
         // Sync Balance
         let balanceChange = 0;
         if (editingTx.type === actualType) {
            balanceChange = actualType === 'income' ? diff : -diff;
         } else {
-           // Type changed! e.g., expense -> income
-           // Revert old
            const revertOld = editingTx.type === 'income' ? -editingTx.amount : editingTx.amount;
-           // Apply new
            const applyNew = actualType === 'income' ? amount : -amount;
            balanceChange = revertOld + applyNew;
         }
 
         if (balanceChange !== 0) {
-          await updateDoc(doc(db, 'businesses', businessId), {
-            balance: increment(balanceChange)
-          });
+            const { data: biz } = await supabase.from('businesses').select('balance').eq('id', businessId).single();
+            await supabase.from('businesses').update({ balance: (biz?.balance || 0) + balanceChange }).eq('id', businessId);
         }
       } else {
         // Record New Transaction
-        await addDoc(collection(db, 'businessTransactions'), {
+        await supabase.from('business_transactions').insert({
           amount,
           category: formData.category,
           date: formData.date,
           note: formData.note,
           type: actualType,
-          businessId,
-          userId: user.uid,
-          createdAt: serverTimestamp()
+          business_id: businessId,
+          user_id: user.id,
+          created_at: new Date().toISOString()
         });
 
         // Update Business Balance
-        await updateDoc(doc(db, 'businesses', businessId), {
-          balance: increment(actualType === 'income' ? amount : -amount)
-        });
+        const { data: biz } = await supabase.from('businesses').select('balance').eq('id', businessId).single();
+        await supabase.from('businesses').update({ balance: (biz?.balance || 0) + (actualType === 'income' ? amount : -amount) }).eq('id', businessId);
       }
 
       setShowModal(false);
       setEditingTx(null);
       setFormData({ amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '', txType: type === 'all' ? 'expense' : type });
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'businessTransactions');
+       console.error("Error saving transaction:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -151,16 +137,17 @@ export default function BusinessTransactionList() {
     const tx = txToDelete;
     setIsSubmitting(true);
     try {
-      await moveToTrash('businessTransactions', tx.id, tx);
-      await deleteDoc(doc(db, 'businessTransactions', tx.id));
+      await moveToTrash('business_transactions', tx.id, tx);
+      await supabase.from('business_transactions').delete().eq('id', tx.id);
+      
       // Revert Balance
-      await updateDoc(doc(db, 'businesses', businessId!), {
-        balance: increment(tx.type === 'income' ? -tx.amount : tx.amount)
-      });
+      const { data: biz } = await supabase.from('businesses').select('balance').eq('id', businessId!).single();
+      await supabase.from('businesses').update({ balance: (biz?.balance || 0) + (tx.type === 'income' ? -tx.amount : tx.amount) }).eq('id', businessId!);
+      
       setShowDeleteModal(false);
       setTxToDelete(null);
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `businessTransactions/${tx.id}`);
+       console.error("Error deleting transaction:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -185,7 +172,7 @@ export default function BusinessTransactionList() {
   };
 
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(val);
+    return formatCurrencyGlobal(val, currencyCode);
   };
 
    const title = type === 'all' ? 'Business History' : type === 'income' ? 'Business Income' : 'Business Expenses';

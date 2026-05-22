@@ -1,15 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { LogOut, User, DollarSign, Save, Trash2 } from 'lucide-react';
-import { updateDoc, doc } from 'firebase/firestore';
-import { collections } from '../services/db';
-import { db } from '../services/firebase';
-import { handleFirestoreError, OperationType } from '../services/dbErrorHandler';
+import { supabase } from '../services/supabase';
 import { useNavigate } from 'react-router-dom';
-import { CURRENCIES, formatCurrency } from '../lib/currency';
+import { CURRENCIES } from '../lib/currency';
 
 export default function Profile() {
-  const { userProfile, user, logout } = useAuth();
+  const { userProfile, user, logout, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [income, setIncome] = useState(userProfile?.income?.toString() || '0');
   const [currency, setCurrency] = useState(userProfile?.currency || 'USD');
@@ -22,14 +19,19 @@ export default function Profile() {
     setSaved(false);
     
     try {
-      await updateDoc(doc(db, collections.users, user.uid), {
+      const { error } = await supabase.from('users').update({
         income: parseFloat(income),
         currency: currency
-      });
+      }).eq('id', user.id);
+      
+      if (error) throw error;
+      
+      await refreshProfile();
+      
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, collections.users);
+      console.error("Error updating profile:", e);
     } finally {
       setLoading(false);
     }
@@ -45,8 +47,8 @@ export default function Profile() {
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 flex items-center gap-4 mb-6 relative overflow-hidden">
         <div className="absolute top-0 w-full h-2 bg-gradient-to-r from-brand-400 to-brand-600 left-0"></div>
         <div className="w-16 h-16 bg-gray-100 text-gray-400 rounded-full flex items-center justify-center">
-            {user?.photoURL ? (
-              <img src={user.photoURL} alt="User" className="w-full h-full rounded-full object-cover" />
+            {user?.user_metadata?.avatar_url ? (
+              <img src={user.user_metadata.avatar_url} alt="User" className="w-full h-full rounded-full object-cover" />
             ) : (
               <User size={32} />
             )}
