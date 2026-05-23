@@ -280,7 +280,7 @@ export default function Goals() {
 
   return (
     <div className="flex flex-col tracking-tight pt-4">
-      <div className="flex items-center justify-between mb-8 pr-12">
+      <div className="flex items-center justify-between mb-8 pr-18">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
            <Flag className="text-brand-600" />
            Future & Strategy

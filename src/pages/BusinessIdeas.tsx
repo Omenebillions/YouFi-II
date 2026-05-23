@@ -95,7 +95,7 @@ export default function BusinessIdeas() {
 
   return (
     <div className="flex flex-col tracking-tight pt-4 pb-20">
-      <div className="flex items-center justify-between mb-8 pr-4">
+      <div className="flex items-center justify-between mb-8 pr-18">
         <button onClick={() => navigate('/business')} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
           <ArrowLeft size={20} />
         </button>

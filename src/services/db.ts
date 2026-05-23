@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { localDb, storeOfflineTransaction, getOfflineTransactions } from '../db';
+import { parseBusinessName } from '../lib/business';
 
 export const tables = {
   users: 'users',
@@ -305,7 +306,17 @@ export const getBusinesses = async (userId: string) => {
       .order('created_at', { ascending: false });
       
     if (error) throw error;
-    return data || [];
+    if (!data) return [];
+    
+    return data.map((b: any) => {
+      const meta = parseBusinessName(b.name);
+      return {
+        ...b,
+        name: meta.name,
+        category: meta.category,
+        description: meta.description
+      };
+    });
   } catch (error) {
     console.error("Error fetching businesses:", error);
     return [];

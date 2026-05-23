@@ -4,6 +4,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useNativeBridge } from '../hooks/useNativeBridge';
+import UpgradePrompt from '../components/UpgradePrompt';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency } from '../lib/currency';
 import { format, addDays, addWeeks, addMonths, addYears } from 'date-fns';
@@ -12,6 +14,7 @@ import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 export default function UpcomingPayments() {
   const { user, userProfile } = useAuth();
+  const { bridge, isPremium, refreshPremiumStatus } = useNativeBridge();
   const navigate = useNavigate();
   const currencyCode = userProfile?.currency || 'USD';
   
@@ -22,6 +25,9 @@ export default function UpcomingPayments() {
   const [paymentToDelete, setPaymentToDelete] = useState<any>(null);
   const [editingPayment, setEditingPayment] = useState<any>(null);
   
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeFeature, setUpgradeFeature] = useState('Calendar Sync');
+
   const [formData, setFormData] = useState({
     title: '',
     amount: '',
@@ -77,16 +83,18 @@ export default function UpcomingPayments() {
     
     setLoading(true);
     try {
+      let savedRow: any = null;
       if (editingPayment) {
-        await supabase.from('upcoming_payments').update({
+        const { data } = await supabase.from('upcoming_payments').update({
           title: formData.title,
           amount: parseFloat(formData.amount),
           due_date: formData.dueDate,
           is_recurring: formData.is_recurring,
           frequency: formData.is_recurring ? formData.frequency : null,
-        }).eq('id', editingPayment.id);
+        }).eq('id', editingPayment.id).select().single();
+        savedRow = data;
       } else {
-        await supabase.from('upcoming_payments').insert({
+        const { data } = await supabase.from('upcoming_payments').insert({
           user_id: user.id,
           title: formData.title,
           amount: parseFloat(formData.amount),
@@ -94,8 +102,24 @@ export default function UpcomingPayments() {
           is_recurring: formData.is_recurring,
           frequency: formData.is_recurring ? formData.frequency : null,
           created_at: new Date().toISOString(),
-        });
+        }).select().single();
+        savedRow = data;
       }
+
+      if (savedRow && bridge?.schedulePaymentNotifications) {
+        try {
+          await bridge.schedulePaymentNotifications([{
+            id: savedRow.id,
+            dueDate: savedRow.due_date,
+            amount: savedRow.amount,
+            status: 'unpaid'
+          }], savedRow.title);
+          console.log('[Native Bridge]: Scheduled notification reminder for', savedRow.title);
+        } catch (err) {
+          console.error('[Native Bridge] Error scheduling notification:', err);
+        }
+      }
+
       setShowModal(false);
       setEditingPayment(null);
       setFormData({
@@ -111,6 +135,14 @@ export default function UpcomingPayments() {
   const handleMarkPaid = async (payment: any) => {
     setLoading(true);
     try {
+      if (bridge?.cancelNotification) {
+        try {
+          await bridge.cancelNotification(payment.id);
+        } catch (err) {
+          console.error('[Native Bridge] Error cancelling notification:', err);
+        }
+      }
+
       if (payment.is_recurring && payment.frequency) {
         const currentDueDate = new Date(payment.due_date);
         let nextDueDate;
@@ -122,9 +154,24 @@ export default function UpcomingPayments() {
             default: nextDueDate = addMonths(currentDueDate, 1);
         }
         
-        await supabase.from('upcoming_payments').update({
+        const { data: updatedRow } = await supabase.from('upcoming_payments').update({
             due_date: format(nextDueDate, 'yyyy-MM-dd')
-        }).eq('id', payment.id);
+        }).eq('id', payment.id).select().single();
+
+        // Reschedule notification for next occurrence
+        if (updatedRow && bridge?.schedulePaymentNotifications) {
+          try {
+            await bridge.schedulePaymentNotifications([{
+              id: updatedRow.id,
+              dueDate: updatedRow.due_date,
+              amount: updatedRow.amount,
+              status: 'unpaid'
+            }], updatedRow.title);
+            console.log('[Native Bridge]: Rescheduled recurring reminder for next period on', updatedRow.due_date);
+          } catch (err) {
+            console.error('[Native Bridge] Error rescheduling recurring notification:', err);
+          }
+        }
       } else {
         await supabase.from('upcoming_payments').delete().eq('id', payment.id);
       }
@@ -139,6 +186,14 @@ export default function UpcomingPayments() {
       if (!paymentToDelete) return;
       setLoading(true);
       try {
+          if (bridge?.cancelNotification) {
+            try {
+              await bridge.cancelNotification(paymentToDelete.id);
+            } catch (err) {
+              console.error('[Native Bridge] Error cancelling notification of deleted payment:', err);
+            }
+          }
+
           await supabase.from('upcoming_payments').delete().eq('id', paymentToDelete.id);
           setShowDeleteModal(false);
           setPaymentToDelete(null);
@@ -147,7 +202,33 @@ export default function UpcomingPayments() {
       } finally {
           setLoading(false);
       }
-  }
+  };
+
+  const handleSyncToCalendar = async (payment: any) => {
+    if (!isPremium) {
+      setUpgradeFeature('Calendar Sync');
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    if (bridge?.syncToCalendar) {
+      try {
+        const success = await bridge.syncToCalendar([{
+          id: payment.id,
+          dueDate: payment.due_date,
+          amount: payment.amount
+        }], payment.title);
+
+        if (success) {
+          alert(`Successfully synced "${payment.title}" to device calendar!`);
+        } else {
+          alert('Could not sync to device calendar. Verify calendar app permissions.');
+        }
+      } catch (err) {
+        console.error('[Calendar Sync Error] failed native bridge call:', err);
+      }
+    }
+  };
 
   // Group by month
   const groupedPayments: { [month: string]: typeof payments } = {};
@@ -161,7 +242,7 @@ export default function UpcomingPayments() {
   return (
     <div className="flex flex-col h-full bg-[#f8f9fc]">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8 px-2 pr-14">
+      <div className="flex items-center justify-between mb-8 px-2 pr-20">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-gray-700 shadow-sm">
             <ArrowLeft size={20} />
@@ -217,6 +298,9 @@ export default function UpcomingPayments() {
                                             <Edit2 size={14} />
                                        </button>
                                        <button onClick={() => handleMarkPaid(payment)} className="text-[10px] text-brand-600 font-bold uppercase tracking-wider bg-brand-50 px-2 py-1 rounded">Mark Paid</button>
+                                        <button type="button" onClick={() => handleSyncToCalendar(payment)} className="text-[10px] text-amber-600 font-bold uppercase tracking-wider bg-amber-50 px-2 py-1 rounded flex items-center gap-1">
+                                             <CalendarDays size={10} /> Sync
+                                        </button>
                                    </div>
                                </div>
                            </div>
@@ -232,6 +316,13 @@ export default function UpcomingPayments() {
         onClose={() => { setShowDeleteModal(false); setPaymentToDelete(null); }}
         onConfirm={handleDelete}
         itemName={paymentToDelete ? paymentToDelete.title : undefined}
+      />
+
+      <UpgradePrompt 
+        isOpen={showUpgradeModal} 
+        onClose={() => setShowUpgradeModal(false)} 
+        featureName={upgradeFeature}
+        onSuccess={() => refreshPremiumStatus()}
       />
 
       <AnimatePresence>

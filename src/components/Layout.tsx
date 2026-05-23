@@ -8,7 +8,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
+import { parseBusinessName } from '../lib/business';
 import logo from '../assets/images/youfi_app_logo_1779452869088.png';
+import DuePaymentsBanner from './DuePaymentsBanner';
 
 export default function Layout() {
   const { user, userProfile, logout } = useAuth();
@@ -57,7 +59,17 @@ export default function Layout() {
   const loadSidebarBusinesses = async () => {
     try {
       const { data } = await supabase.from('businesses').select('*').eq('user_id', user.id);
-      if (data) setBusinesses(data);
+      if (data) {
+        setBusinesses(data.map((b: any) => {
+          const meta = parseBusinessName(b.name);
+          return {
+            ...b,
+            name: meta.name,
+            category: meta.category,
+            description: meta.description
+          };
+        }));
+      }
     } catch (err) {
       console.error("Error loading sidebar businesses:", err);
     }
@@ -68,6 +80,7 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-[100dvh] w-full bg-[#f8f9fc] flex-col relative">
+      <DuePaymentsBanner />
       {isOffline && (
         <div className="w-full bg-orange-500 text-white text-xs font-bold py-1.5 flex justify-center items-center gap-2 z-50">
           <WifiOff size={14} />
