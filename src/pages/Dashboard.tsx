@@ -13,8 +13,10 @@ import {
 } from 'recharts';
 import { checkUpcomingPaymentNotifications } from '../lib/notifications';
 import { parsePersonalDebt } from '../lib/debt';
+import { parseBusinessName, serializeBusinessTxCategory } from '../lib/business';
 
 import logo from '../assets/images/youfi_app_logo_1779452869088.png';
+import NotificationCenter from '../components/NotificationCenter';
 
 export default function Dashboard() {
   const { userProfile, user } = useAuth();
@@ -27,32 +29,41 @@ export default function Dashboard() {
   const [transferLoading, setTransferLoading] = useState(false);
   const [chartData, setChartData] = useState<any[]>([]);
   const [upcomingPayments, setUpcomingPayments] = useState<any[]>([]);
+
+  const fetchAllData = async () => {
+    if (!user) return;
+    const [txRes, bizRes, upcomingRes] = await Promise.all([
+      supabase.from(tables.transactions).select('*').eq('user_id', user.id).order('date', { ascending: false }),
+      supabase.from(tables.businesses).select('*').eq('user_id', user.id),
+      supabase.from(tables.upcomingPayments).select('*').eq('user_id', user.id)
+    ]);
+
+    if (txRes.data) {
+      setTransactions(txRes.data);
+      processChartData(txRes.data);
+    }
+    if (bizRes.data) {
+      setBusinesses(bizRes.data.map((b: any) => {
+        const meta = parseBusinessName(b.name);
+        return {
+          ...b,
+          name: meta.name,
+          category: meta.category,
+          description: meta.description
+        };
+      }));
+    }
+    if (upcomingRes.data) {
+      setUpcomingPayments(upcomingRes.data);
+      checkUpcomingPaymentNotifications(upcomingRes.data);
+    }
+    setLoading(false);
+  };
   
   useEffect(() => {
     if (!user) return;
 
     setLoading(true);
-    
-    // Initial fetches
-    const fetchAllData = async () => {
-      const [txRes, bizRes, upcomingRes] = await Promise.all([
-        supabase.from(tables.transactions).select('*').eq('user_id', user.id).order('date', { ascending: false }),
-        supabase.from(tables.businesses).select('*').eq('user_id', user.id),
-        supabase.from(tables.upcomingPayments).select('*').eq('user_id', user.id)
-      ]);
-
-      if (txRes.data) {
-        setTransactions(txRes.data);
-        processChartData(txRes.data);
-      }
-      if (bizRes.data) setBusinesses(bizRes.data);
-      if (upcomingRes.data) {
-        setUpcomingPayments(upcomingRes.data);
-        checkUpcomingPaymentNotifications(upcomingRes.data);
-      }
-      setLoading(false);
-    };
-
     fetchAllData();
 
     // Set up real-time subscriptions
@@ -70,7 +81,17 @@ export default function Dashboard() {
     const bizChannel = supabase.channel('dashboard-biz')
       .on('postgres_changes', { event: '*', schema: 'public', table: tables.businesses, filter: `user_id=eq.${user.id}` }, () => {
         supabase.from(tables.businesses).select('*').eq('user_id', user.id).then(({ data }) => {
-          if (data) setBusinesses(data);
+          if (data) {
+            setBusinesses(data.map((b: any) => {
+              const meta = parseBusinessName(b.name);
+              return {
+                ...b,
+                name: meta.name,
+                category: meta.category,
+                description: meta.description
+              };
+            }));
+          }
         });
       })
       .subscribe();
@@ -130,8 +151,7 @@ export default function Dashboard() {
         user_id: user.id,
         type: 'income',
         amount,
-        category: category,
-        note: transferData.note || `Transfer from personal as ${category}`,
+        category: serializeBusinessTxCategory(category, transferData.note || `Transfer from personal as ${category}`),
         date: new Date().toISOString().split('T')[0]
       });
 
@@ -159,6 +179,7 @@ export default function Dashboard() {
 
       setShowTransferModal(false);
       setTransferData({ amount: '', businessId: '', note: '', transferType: 'Investment' });
+      await fetchAllData();
     } catch (error) {
       console.error("Error during transfer:", error);
     } finally {
@@ -209,7 +230,7 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col tracking-tight relative pt-4 overflow-x-hidden">
       {/* Header Context */}
-      <div className="flex justify-between items-center mb-8 pr-14">
+      <div className="flex justify-between items-center mb-8 pr-20">
           <div className="flex items-center gap-3">
              <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center p-1 shadow-sm">
                 <img src={logo} alt="YouFi" className="w-full h-full object-contain" />
@@ -220,9 +241,7 @@ export default function Dashboard() {
              </div>
           </div>
           <div className="flex items-center gap-3">
-            <button className="w-10 h-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
-              <Bell size={18} />
-            </button>
+            <NotificationCenter />
             <div className="w-10 h-10 rounded-full bg-brand-100 border-2 border-white shadow-sm flex items-center justify-center font-bold text-brand-600 overflow-hidden">
                 {userProfile?.avatar ? <img src={userProfile.avatar} alt="avatar" /> : userProfile?.name?.charAt(0) || 'U'}
             </div>

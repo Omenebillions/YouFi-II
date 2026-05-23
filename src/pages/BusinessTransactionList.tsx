@@ -11,6 +11,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveCont
 import { moveToTrash } from '../services/db';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
+import { parseBusinessTxCategory, serializeBusinessTxCategory } from '../lib/business';
 
 export default function BusinessTransactionList() {
   const { businessId, type } = useParams(); // type: 'income' or 'expense'
@@ -26,6 +27,25 @@ export default function BusinessTransactionList() {
   const [txToDelete, setTxToDelete] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+
+  const fetchTransactionsForUI = async () => {
+    if (!businessId || !type || !user) return;
+    let query = supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id);
+    if (type !== 'all') {
+      query = query.eq('type', type);
+    }
+    const { data } = await query.order('date', { ascending: false });
+    if (data) {
+      setTransactions(data.map((row: any) => {
+        const meta = parseBusinessTxCategory(row.category);
+        return {
+          ...row,
+          category: meta.category,
+          note: meta.note || ''
+        };
+      }));
+    }
+  };
   
   useEffect(() => {
     if (location.search.includes('add=true')) {
@@ -41,27 +61,11 @@ export default function BusinessTransactionList() {
     if (!businessId || !type || !user) return;
 
     setLoading(true);
-    const fetchTransactions = async () => {
-      let query = supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id);
-      if (type !== 'all') {
-        query = query.eq('type', type);
-      }
-      const { data } = await query.order('date', { ascending: false });
-      if (data) setTransactions(data);
-      setLoading(false);
-    };
-
-    fetchTransactions();
+    fetchTransactionsForUI().then(() => setLoading(false));
 
     const channel = supabase.channel(`biz-tx-${businessId}-${type}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'business_transactions', filter: `business_id=eq.${businessId}` }, () => {
-        let query = supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id);
-        if (type !== 'all') {
-            query = query.eq('type', type);
-        }
-        query.order('date', { ascending: false }).then(({ data }) => {
-            if (data) setTransactions(data);
-        });
+        fetchTransactionsForUI();
       })
       .subscribe();
 
@@ -79,14 +83,14 @@ export default function BusinessTransactionList() {
     setIsSubmitting(true);
     try {
       const actualType = formData.txType || type;
+      const serializedCategory = serializeBusinessTxCategory(formData.category, formData.note);
       if (editingTx) {
         const diff = amount - editingTx.amount;
         // Update Transaction
         await supabase.from('business_transactions').update({
           amount,
-          category: formData.category,
+          category: serializedCategory,
           date: formData.date,
-          note: formData.note,
           type: actualType
         }).eq('id', editingTx.id);
 
@@ -108,13 +112,11 @@ export default function BusinessTransactionList() {
         // Record New Transaction
         await supabase.from('business_transactions').insert({
           amount,
-          category: formData.category,
+          category: serializedCategory,
           date: formData.date,
-          note: formData.note,
           type: actualType,
           business_id: businessId,
-          user_id: user.id,
-          created_at: new Date().toISOString()
+          user_id: user.id
         });
 
         // Update Business Balance
@@ -122,6 +124,7 @@ export default function BusinessTransactionList() {
         await supabase.from('businesses').update({ balance: (biz?.balance || 0) + (actualType === 'income' ? amount : -amount) }).eq('id', businessId);
       }
 
+      await fetchTransactionsForUI();
       setShowModal(false);
       setEditingTx(null);
       setFormData({ amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '', txType: type === 'all' ? 'expense' : type });
@@ -144,6 +147,7 @@ export default function BusinessTransactionList() {
       const { data: biz } = await supabase.from('businesses').select('balance').eq('id', businessId!).single();
       await supabase.from('businesses').update({ balance: (biz?.balance || 0) + (tx.type === 'income' ? -tx.amount : tx.amount) }).eq('id', businessId!);
       
+      await fetchTransactionsForUI();
       setShowDeleteModal(false);
       setTxToDelete(null);
     } catch (error) {

@@ -15,6 +15,7 @@ import {
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
+import { parseBusinessName, serializeBusinessName } from '../lib/business';
 
 export default function BusinessList() {
   const navigate = useNavigate();
@@ -43,7 +44,17 @@ export default function BusinessList() {
         supabase.from('sales').select('*').eq('user_id', user.id).order('date', { ascending: true })
       ]);
 
-      if (bizRes.data) setBusinesses(bizRes.data);
+      if (bizRes.data) {
+        setBusinesses(bizRes.data.map((b: any) => {
+          const meta = parseBusinessName(b.name);
+          return {
+            ...b,
+            name: meta.name,
+            category: meta.category,
+            description: meta.description
+          };
+        }));
+      }
       
       processStats(txRes.data || [], salesRes.data || []);
       setLoading(false);
@@ -55,7 +66,17 @@ export default function BusinessList() {
     const bizChannel = supabase.channel('biz-list')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'businesses', filter: `user_id=eq.${user.id}` }, () => {
         supabase.from('businesses').select('*').eq('user_id', user.id).then(({ data }) => {
-          if (data) setBusinesses(data);
+          if (data) {
+            setBusinesses(data.map((b: any) => {
+              const meta = parseBusinessName(b.name);
+              return {
+                ...b,
+                name: meta.name,
+                category: meta.category,
+                description: meta.description
+              };
+            }));
+          }
         });
       })
       .subscribe();
@@ -142,7 +163,17 @@ export default function BusinessList() {
   const fetchBusinessesOnly = async () => {
     if (!user) return;
     const { data } = await supabase.from('businesses').select('*').eq('user_id', user.id);
-    if (data) setBusinesses(data);
+    if (data) {
+      setBusinesses(data.map((b: any) => {
+        const meta = parseBusinessName(b.name);
+        return {
+          ...b,
+          name: meta.name,
+          category: meta.category,
+          description: meta.description
+        };
+      }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -150,14 +181,15 @@ export default function BusinessList() {
     if (!user || !formData.name || loading) return;
 
     setLoading(true);
+    const serializedName = serializeBusinessName(formData.name, formData.category, formData.description);
     try {
       if (editingBiz) {
         await supabase.from('businesses')
-          .update(formData)
+          .update({ name: serializedName })
           .eq('id', editingBiz.id);
       } else {
         await supabase.from('businesses').insert({
-          ...formData,
+          name: serializedName,
           user_id: user.id,
           balance: 0
         });

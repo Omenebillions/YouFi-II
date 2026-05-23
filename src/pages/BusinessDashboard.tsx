@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { parseBusinessName, parseBusinessTxCategory, serializeBusinessTxCategory } from '../lib/business';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
@@ -44,12 +45,38 @@ export default function BusinessDashboard() {
         supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id).order('date', { ascending: false }).limit(5)
       ]);
 
-      if (bizRes.data) setBusiness(bizRes.data);
-      if (txRes.data) setBTxs(txRes.data);
+      if (bizRes.data) {
+        const meta = parseBusinessName(bizRes.data.name);
+        setBusiness({
+          ...bizRes.data,
+          name: meta.name,
+          category: meta.category,
+          description: meta.description
+        });
+      }
+      if (txRes.data) {
+        setBTxs(txRes.data.map((row: any) => {
+          const meta = parseBusinessTxCategory(row.category);
+          return {
+            ...row,
+            category: meta.category,
+            note: meta.note || ''
+          };
+        }));
+      }
       if (prodRes.count !== null) setProductsCount(prodRes.count);
       if (salesRes.data) setBSales(salesRes.data);
       if (debtRes.data) setBDebts(debtRes.data);
-      if (recentRes.data) setRecentTransactions(recentRes.data);
+      if (recentRes.data) {
+        setRecentTransactions(recentRes.data.map((row: any) => {
+          const meta = parseBusinessTxCategory(row.category);
+          return {
+            ...row,
+            category: meta.category,
+            note: meta.note || ''
+          };
+        }));
+      }
       setLoading(false);
     };
 
@@ -58,7 +85,15 @@ export default function BusinessDashboard() {
     // Subscriptions
     const bizChannel = supabase.channel(`biz-dashboard-${businessId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'businesses', filter: `id=eq.${businessId}` }, (payload) => {
-        if (payload.new) setBusiness(payload.new);
+        if (payload.new && (payload.new as any).name) {
+          const meta = parseBusinessName((payload.new as any).name);
+          setBusiness({
+            ...payload.new,
+            name: meta.name,
+            category: meta.category,
+            description: meta.description
+          });
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'business_transactions', filter: `business_id=eq.${businessId}` }, () => refreshData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales', filter: `business_id=eq.${businessId}` }, () => refreshData())
@@ -67,18 +102,46 @@ export default function BusinessDashboard() {
       .subscribe();
 
     const refreshData = async () => {
-      const [txRes, prodRes, salesRes, debtRes, recentRes] = await Promise.all([
+      const [bizRes, txRes, prodRes, salesRes, debtRes, recentRes] = await Promise.all([
+        supabase.from('businesses').select('*').eq('id', businessId).single(),
         supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id),
         supabase.from('products').select('*', { count: 'exact', head: true }).eq('business_id', businessId).eq('user_id', user.id),
         supabase.from('sales').select('*').eq('business_id', businessId).eq('user_id', user.id),
         supabase.from('business_debts').select('*').eq('business_id', businessId).eq('user_id', user.id).eq('status', 'unpaid'),
         supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id).order('date', { ascending: false }).limit(5)
       ]);
-      if (txRes.data) setBTxs(txRes.data);
+      if (bizRes.data) {
+        const meta = parseBusinessName(bizRes.data.name);
+        setBusiness({
+          ...bizRes.data,
+          name: meta.name,
+          category: meta.category,
+          description: meta.description
+        });
+      }
+      if (txRes.data) {
+        setBTxs(txRes.data.map((row: any) => {
+          const meta = parseBusinessTxCategory(row.category);
+          return {
+            ...row,
+            category: meta.category,
+            note: meta.note || ''
+          };
+        }));
+      }
       if (prodRes.count !== null) setProductsCount(prodRes.count);
       if (salesRes.data) setBSales(salesRes.data);
       if (debtRes.data) setBDebts(debtRes.data);
-      if (recentRes.data) setRecentTransactions(recentRes.data);
+      if (recentRes.data) {
+        setRecentTransactions(recentRes.data.map((row: any) => {
+          const meta = parseBusinessTxCategory(row.category);
+          return {
+            ...row,
+            category: meta.category,
+            note: meta.note || ''
+          };
+        }));
+      }
     };
 
     return () => {
@@ -191,8 +254,11 @@ export default function BusinessDashboard() {
           .eq('id', businessId);
 
         await supabase.from('business_transactions').insert({
-           business_id: businessId, user_id: user.id, type: 'expense', amount, category: 'Transfer to Personal',
-           note: transferData.note || 'Transfer to personal account',
+           business_id: businessId, 
+           user_id: user.id, 
+           type: 'expense', 
+           amount, 
+           category: serializeBusinessTxCategory('Transfer to Personal', transferData.note || 'Transfer to personal account'),
            date: new Date().toISOString().split('T')[0]
         });
 
@@ -207,8 +273,11 @@ export default function BusinessDashboard() {
           .eq('id', businessId);
 
         await supabase.from('business_transactions').insert({
-           business_id: businessId, user_id: user.id, type: 'income', amount, category: 'Transfer from Personal',
-           note: transferData.note || 'Transfer from personal account',
+           business_id: businessId, 
+           user_id: user.id, 
+           type: 'income', 
+           amount, 
+           category: serializeBusinessTxCategory('Transfer from Personal', transferData.note || 'Transfer from personal account'),
            date: new Date().toISOString().split('T')[0]
         });
         
@@ -365,7 +434,7 @@ export default function BusinessDashboard() {
             <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 mx-auto mb-2">
                <Package size={16} />
             </div>
-            <p className="text-[8px] font-bold text-gray-400 uppercase">Items</p>
+            <p className="text-[8px] font-bold text-gray-400 uppercase">Product & Services</p>
          </div>
          <div onClick={() => navigate(`/business/${businessId}/transactions/income`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
             <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 mx-auto mb-2">

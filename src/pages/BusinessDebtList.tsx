@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
-  ArrowLeft, Plus, CreditCard, 
+  ArrowLeft, Plus, CreditCard, Sparkles,
   Search, Calendar, CheckCircle2, AlertCircle, Trash2, Edit2, X, RotateCw, ChevronDown, ChevronUp, Check
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useNativeBridge } from '../hooks/useNativeBridge';
+import UpgradePrompt from '../components/UpgradePrompt';
 import { motion, AnimatePresence } from 'motion/react';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import { generateRecurringPayments } from '../lib/debt';
@@ -56,6 +58,8 @@ export default function BusinessDebtList() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, userProfile } = useAuth();
+  const { bridge, isPremium, refreshPremiumStatus } = useNativeBridge();
+  
   const [debts, setDebts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedDebtId, setExpandedDebtId] = useState<string | null>(null);
@@ -64,6 +68,10 @@ export default function BusinessDebtList() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [debtToDelete, setDebtToDelete] = useState<any>(null);
   const [editingDebt, setEditingDebt] = useState<any>(null);
+  
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeFeature, setUpgradeFeature] = useState('Sync to Calendar');
+
   const [formData, setFormData] = useState({ 
     lender: '', 
     amount: '', 
@@ -142,24 +150,52 @@ export default function BusinessDebtList() {
       : formData.lender;
 
     try {
+      let savedRow: any = null;
       if (editingDebt) {
-        await supabase.from('business_debts').update({
+        const { data } = await supabase.from('business_debts').update({
           lender: finalLender,
           amount: amount,
           due_date: formData.dueDate,
           status: formData.status
-        }).eq('id', editingDebt.id);
+        }).eq('id', editingDebt.id).select().single();
+        savedRow = data;
       } else {
-        await supabase.from('business_debts').insert({
+        const { data } = await supabase.from('business_debts').insert({
           lender: finalLender,
           amount: amount,
           due_date: formData.dueDate,
           status: formData.status,
           business_id: businessId,
           user_id: user.id
-        });
+        }).select().single();
+        savedRow = data;
       }
       
+      if (savedRow && bridge?.schedulePaymentNotifications) {
+        try {
+          const recurrence = parseLenderRecurrence(savedRow.lender);
+          if (recurrence.isRecurring && recurrence.payments && recurrence.payments.length > 0) {
+            const instancesToSchedule = recurrence.payments.map((p: any) => ({
+              id: `${savedRow.id}_install_${p.id}`,
+              dueDate: p.dueDate,
+              amount: p.amount,
+              status: p.status
+            }));
+            await bridge.schedulePaymentNotifications(instancesToSchedule, recurrence.lender);
+          } else {
+            await bridge.schedulePaymentNotifications([{
+              id: savedRow.id,
+              dueDate: savedRow.due_date,
+              amount: savedRow.amount,
+              status: savedRow.status
+            }], recurrence.lender);
+          }
+          console.log('[Native App]: Scheduled business debt reminders');
+        } catch (err) {
+          console.error('[Native App] Error scheduling business reminders:', err);
+        }
+      }
+
       setShowModal(false);
       setEditingDebt(null);
       setFormData({ 
@@ -185,6 +221,25 @@ export default function BusinessDebtList() {
     if (!debtToDelete) return;
     setLoading(true);
     try {
+       if (bridge?.cancelNotification) {
+         try {
+           const recurrence = parseLenderRecurrence(debtToDelete.lender);
+           if (recurrence.isRecurring && recurrence.payments) {
+             for (const p of recurrence.payments) {
+               try {
+                 await bridge.cancelNotification(`${debtToDelete.id}_install_${p.id}`);
+               } catch (e) {}
+             }
+           } else {
+             try {
+               await bridge.cancelNotification(debtToDelete.id);
+             } catch (e) {}
+           }
+         } catch (cancelErr) {
+           console.error('[Native App] Error removing scheduled alerts during delete:', cancelErr);
+         }
+       }
+
        await supabase.from('business_debts').delete().eq('id', debtToDelete.id);
        setShowDeleteModal(false);
        setDebtToDelete(null);
@@ -245,6 +300,47 @@ export default function BusinessDebtList() {
       ? `${recurrence.lender} | recurring: ${recurrence.frequency}${recurrence.duration ? ` | duration: ${recurrence.duration}` : ''}${serializedPayments}`
       : debt.lender;
 
+    // Bridge notification sync
+    if (bridge) {
+      if (newStatus === 'paid') {
+        if (recurrence.isRecurring && recurrence.payments) {
+          for (const p of recurrence.payments) {
+            try {
+              await bridge.cancelNotification(`${debt.id}_install_${p.id}`);
+            } catch (e) {}
+          }
+        } else {
+          try {
+            await bridge.cancelNotification(debt.id);
+          } catch (e) {}
+        }
+      } else {
+        // Reschedule
+        if (bridge.schedulePaymentNotifications) {
+          try {
+             if (recurrence.isRecurring && updatedPayments.length > 0) {
+               const instancesToSchedule = updatedPayments.map((p: any) => ({
+                 id: `${debt.id}_install_${p.id}`,
+                 dueDate: p.dueDate,
+                 amount: p.amount,
+                 status: 'unpaid'
+               }));
+               await bridge.schedulePaymentNotifications(instancesToSchedule, recurrence.lender);
+             } else {
+               await bridge.schedulePaymentNotifications([{
+                 id: debt.id,
+                 dueDate: debt.due_date,
+                 amount: debt.amount,
+                 status: 'unpaid'
+               }], recurrence.lender);
+             }
+          } catch (err) {
+             console.error('[Native Bridge] Error rescheduling during toggle:', err);
+          }
+        }
+      }
+    }
+
     try {
        await supabase.from('business_debts').update({ status: newStatus, lender: updatedLender }).eq('id', debt.id);
        fetchDebts();
@@ -264,6 +360,28 @@ export default function BusinessDebtList() {
       return p;
     });
 
+    const toggledInstance = updatedPayments.find((p: any) => p.id === instanceId);
+    
+    // Bridge notifications sync
+    if (toggledInstance && bridge) {
+      if (toggledInstance.status === 'paid') {
+        try {
+          await bridge.cancelNotification(`${debt.id}_install_${instanceId}`);
+        } catch (e) {}
+      } else if (bridge.schedulePaymentNotifications) {
+        try {
+          await bridge.schedulePaymentNotifications([{
+            id: `${debt.id}_install_${instanceId}`,
+            dueDate: toggledInstance.dueDate,
+            amount: toggledInstance.amount,
+            status: 'unpaid'
+          }], recurrence.lender);
+        } catch (err) {
+          console.error('[Native Bridge] Error rescheduling instance during toggle:', err);
+        }
+      }
+    }
+
     const allPaid = updatedPayments.every((p: any) => p.status === 'paid');
     const updatedStatus = allPaid ? 'paid' : 'unpaid';
 
@@ -282,6 +400,70 @@ export default function BusinessDebtList() {
       fetchDebts();
     } catch (err) {
       console.error("Error toggling business payment instance:", err);
+    }
+  };
+
+  const handleSyncToCalendar = async (debt: any) => {
+    if (!isPremium) {
+      setUpgradeFeature('Calendar Sync');
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    if (bridge?.syncToCalendar) {
+      try {
+        const recurrence = parseLenderRecurrence(debt.lender);
+        const instances = recurrence.isRecurring && recurrence.payments && recurrence.payments.length > 0
+          ? recurrence.payments.map((p: any) => ({
+              id: `${debt.id}_install_${p.id}`,
+              dueDate: p.dueDate,
+              amount: p.amount
+            }))
+          : [{
+              id: debt.id,
+              dueDate: debt.due_date,
+              amount: debt.amount
+            }];
+
+        const success = await bridge.syncToCalendar(instances, recurrence.lender);
+        if (success) {
+          alert(`Successfully synced "${recurrence.lender}" to calendar!`);
+        } else {
+          alert('Could not sync to device calendar. Verify calendar app permissions.');
+        }
+      } catch (err) {
+        console.error('[Calendar Sync Error] failed native bridge call:', err);
+      }
+    }
+  };
+
+  const handleScanReceipt = async () => {
+    if (!isPremium) {
+      setUpgradeFeature('Receipt Scanning OCR');
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    if (bridge?.scanReceipt) {
+      try {
+        setLoading(true);
+        const result = await bridge.scanReceipt();
+        if (result && result.success) {
+          setFormData(prev => ({
+            ...prev,
+            lender: result.lender || prev.lender,
+            amount: result.amount ? result.amount.toString() : prev.amount,
+            dueDate: result.date || prev.dueDate
+          }));
+          alert(`OCR Read Success! Auto-filled lender "${result.lender || 'N/A'}" and amount: ${result.amount || 'N/A'}.`);
+        } else {
+          alert('Could not auto-fill details from receipt text. Please input values manually.');
+        }
+      } catch (err) {
+        console.error('[Receipt OCR Error]: Exception calling bridge:', err);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -440,12 +622,17 @@ export default function BusinessDebtList() {
                                     <Trash2 size={18} />
                                  </button>
                               </div>
-                              <button 
-                                 onClick={() => toggleDebtStatus(d)}
-                                 className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors ${d.status === 'paid' ? 'bg-orange-50 text-orange-600 hover:bg-orange-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}
-                              >
-                                 {d.status === 'paid' ? 'Mark Unpaid' : 'Mark Paid'}
-                              </button>
+                              <div className="flex gap-1.5 justify-end">
+                                <button type="button" onClick={() => handleSyncToCalendar(d)} className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 bg-amber-50 text-amber-600 rounded hover:bg-amber-100 flex items-center gap-1 transition-colors">
+                                  Sync
+                                </button>
+                                <button 
+                                   onClick={() => toggleDebtStatus(d)}
+                                   className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors ${d.status === 'paid' ? 'bg-orange-50 text-orange-600 hover:bg-orange-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}
+                                >
+                                   {d.status === 'paid' ? 'Mark Unpaid' : 'Mark Paid'}
+                                </button>
+                              </div>
                            </div>
                         </div>
                      </div>
@@ -550,6 +737,16 @@ export default function BusinessDebtList() {
                   </button>
                </div>
                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                  {/* Premium OCR Receipt Reader */}
+                  <button
+                    type="button"
+                    onClick={handleScanReceipt}
+                    className="flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500/10 to-amber-600/5 hover:from-amber-500/15 hover:to-amber-500/10 text-amber-800 hover:text-amber-900 font-bold text-xs py-3.5 px-4 rounded-2xl border border-dashed border-amber-300 w-full transition-all duration-300 cursor-pointer"
+                  >
+                    <Sparkles size={14} className="text-amber-600 shrink-0" />
+                    <span>Auto-Fill From Bill / Receipt Scan</span>
+                  </button>
+
                   <div className="flex flex-col gap-1.5">
                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Lender / Source</label>
                      <input 
@@ -730,6 +927,13 @@ export default function BusinessDebtList() {
           </>
         )}
       </AnimatePresence>
+
+      <UpgradePrompt 
+        isOpen={showUpgradeModal} 
+        onClose={() => setShowUpgradeModal(false)}
+        featureName={upgradeFeature}
+        onSuccess={() => refreshPremiumStatus()}
+      />
     </div>
   );
 }

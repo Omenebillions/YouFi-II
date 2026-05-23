@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Markdown from 'react-markdown';
 import { supabase } from '../services/supabase';
 import { useParams, useNavigate } from 'react-router-dom';
+import { parseBusinessTxCategory } from '../lib/business';
 
 export default function BusinessCoach() {
   const { userProfile, user } = useAuth();
@@ -59,7 +60,10 @@ export default function BusinessCoach() {
         .eq('user_id', user.id)
         .limit(5);
 
-      const txStr = (txs || []).map((tx: any) => `${tx.date}: ${tx.type} of ${tx.amount} for ${tx.category}`).join('\n');
+      const txStr = (txs || []).map((tx: any) => {
+        const meta = parseBusinessTxCategory(tx.category);
+        return `${tx.date}: ${tx.type} of ${tx.amount} for ${meta.category}${meta.note ? ` (${meta.note})` : ''}`;
+      }).join('\n');
       const salesStr = (sales || []).map((s: any) => `${s.date}: Sold ${s.quantity} of product for ${s.total_price}`).join('\n');
       
       const systemInstruction = `You are a world-class CFO and Business Strategist AI.

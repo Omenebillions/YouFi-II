@@ -20,7 +20,8 @@ export function generateRecurringPayments(
   startDateStr: string,
   frequency: string,
   durationText: string,
-  amount: number
+  amount: number,
+  title?: string
 ): RecurringPaymentInstance[] {
   const instances: RecurringPaymentInstance[] = [];
   const start = startDateStr ? new Date(startDateStr) : new Date();
@@ -59,6 +60,16 @@ export function generateRecurringPayments(
       amount: amount,
       status: 'unpaid'
     });
+  }
+
+  // Native WebView registration call
+  if (typeof window !== 'undefined' && (window as any).YouFI?.isNativeSupported && (window as any).YouFI?.registerPersonalDebtInstances) {
+    try {
+      (window as any).YouFI.registerPersonalDebtInstances(instances, title || 'Personal Debt Repayment');
+      console.log('[Native Bridge]: Personal debt instances registered successfully:', title || 'Personal Debt Repayment');
+    } catch (err) {
+      console.error('[Native Bridge] Error in registerPersonalDebtInstances:', err);
+    }
   }
 
   return instances;
