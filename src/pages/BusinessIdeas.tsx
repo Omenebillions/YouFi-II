@@ -20,8 +20,6 @@ export default function BusinessIdeas() {
 
   // Form states
   const [formData, setFormData] = useState({ title: '', description: '', plan: '' });
-  const [generating, setGenerating] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState("");
 
   const fetchIdeas = async () => {
     if (!user) return;
@@ -49,53 +47,6 @@ export default function BusinessIdeas() {
     };
   }, [user]);
 
-  const handleGenerateIdea = async () => {
-    if (!aiPrompt.trim() || generating) return;
-    setGenerating(true);
-    
-    try {
-      const prompt = `You are a vast, comprehensive, and highly capable business planner, expert in planning all types of businesses from small local shops to massive global enterprises. 
-      Create a detailed, realistic, and actionable business plan for a new venture based on this concept: "${aiPrompt}".
-      
-      Please include:
-      1. Business Name idea (if none provided)
-      2. Executive Summary (The big vision)
-      3. Target Market & Competitor Analysis
-      4. Operations & Logistics
-      5. Monetization, Pricing & Revenue Streams
-      6. Immediate Next Steps & Launch Plan
-      
-      Format beautifully in Markdown.`;
-
-      const res = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: prompt
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      
-      const text = data.text || "";
-      
-      const nameMatch = text.match(/Business Name(?:\sidea)?:\s*([^\n]+)/i);
-      const title = nameMatch ? nameMatch[1].replace(/[*]/g, '').trim() : "New Business Idea";
-      
-      setFormData({
-         title,
-         description: aiPrompt,
-         plan: text
-      });
-
-    } catch (error) {
-      console.error("Error generating business idea:", error);
-      alert("Failed to generate idea. Try again later.");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   const handleSaveIdea = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !formData.title || loading) return;
@@ -119,7 +70,6 @@ export default function BusinessIdeas() {
       setShowModal(false);
       setViewIdea(null);
       setFormData({ title: '', description: '', plan: '' });
-      setAiPrompt('');
       fetchIdeas();
     } catch (error) {
       console.error("Error saving idea:", error);
@@ -155,7 +105,7 @@ export default function BusinessIdeas() {
               Business Ideas
            </h1>
         </div>
-        <button onClick={() => { setViewIdea(null); setFormData({title: '', description: '', plan: ''}); setAiPrompt(''); setShowModal(true); }} className="w-10 h-10 bg-brand-600 rounded-full flex items-center justify-center text-white shadow-sm transition-transform active:scale-95">
+        <button onClick={() => { setViewIdea(null); setFormData({title: '', description: '', plan: ''}); setShowModal(true); }} className="w-10 h-10 bg-brand-600 rounded-full flex items-center justify-center text-white shadow-sm transition-transform active:scale-95">
           <Plus size={20} className="w-5 h-5" />
         </button>
       </div>
@@ -168,9 +118,9 @@ export default function BusinessIdeas() {
                <Lightbulb size={32} />
             </div>
             <h2 className="text-xl font-black text-gray-900 mb-2">Empty Canvas</h2>
-            <p className="text-sm text-gray-500 font-medium mb-8 max-w-xs mx-auto">Brainstorm your next big venture and let AI help you build the perfect business plan.</p>
+            <p className="text-sm text-gray-500 font-medium mb-8 max-w-xs mx-auto">Brainstorm your next big venture and write down the perfect business plan.</p>
             <button 
-               onClick={() => { setViewIdea(null); setFormData({title: '', description: '', plan: ''}); setAiPrompt(''); setShowModal(true); }}
+               onClick={() => { setViewIdea(null); setFormData({title: '', description: '', plan: ''}); setShowModal(true); }}
                className="bg-gray-900 text-white font-bold py-4 px-8 rounded-2xl w-full mx-auto shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
             >
                <Sparkles size={18} className="text-purple-300" /> Start Planning
@@ -247,112 +197,38 @@ export default function BusinessIdeas() {
                </div>
 
                <div className="flex-1 overflow-y-auto hide-scrollbar flex flex-col gap-6 w-full">
-                  {!viewIdea && !formData.plan ? (
-                     // Generate flow
-                     <div className="flex flex-col gap-6">
-                        <div className="bg-purple-50/50 p-6 rounded-3xl border border-purple-100/50">
-                           <div className="flex items-center gap-3 text-purple-700 font-bold mb-3">
-                              <Sparkles size={20} /> AI Idea Generator
-                           </div>
-                           <p className="text-xs text-purple-600/80 font-medium mb-4 leading-relaxed">
-                              Describe your business concept, target market, or even just a loose thought. AI will refine it and generate a comprehensive business plan.
-                           </p>
-                           <textarea
-                              value={aiPrompt}
-                              onChange={(e) => setAiPrompt(e.target.value)}
-                              placeholder="e.g. A subscription service delivering fresh pastries to offices on Monday mornings..."
-                              className="w-full bg-white rounded-2xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-200 border-none shadow-sm min-h-[140px]"
-                           />
-                           <button 
-                              onClick={handleGenerateIdea}
-                              disabled={generating || !aiPrompt.trim()}
-                              className="mt-4 w-full flex items-center justify-center gap-2 bg-purple-600 text-white font-bold py-3.5 rounded-xl disabled:opacity-50 active:scale-[0.98] transition-all"
-                           >
-                              {generating ? 'Generating magical plan...' : 'Draft Plan'} <MoveRight size={18} />
-                           </button>
-                        </div>
-                        
-                        <div className="flex items-center gap-4">
-                           <div className="h-px bg-gray-100 flex-1"></div>
-                           <span className="text-xs font-bold text-gray-300 uppercase">OR Write manually</span>
-                           <div className="h-px bg-gray-100 flex-1"></div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5 focus-within:text-brand-600 transition-colors">
-                           <label className="text-xs font-bold text-gray-500 uppercase ml-1">Idea Title</label>
-                           <textarea 
-                              rows={1}
-                              required
-                              value={formData.title}
-                              onChange={(e) => setFormData({...formData, title: e.target.value})}
-                              className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 focus:ring-2 focus:ring-brand-500 transition-all font-medium resize-none shadow-sm"
-                              placeholder="e.g. Acme Tech Solutions"
-                           />
-                        </div>
-                        <div className="flex flex-col gap-1.5 focus-within:text-brand-600 transition-colors">
-                           <label className="text-xs font-bold text-gray-500 uppercase ml-1">Short Description</label>
-                           <textarea 
-                              required
-                              value={formData.description}
-                              onChange={(e) => setFormData({...formData, description: e.target.value})}
-                              className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 focus:ring-2 focus:ring-brand-500 transition-all font-medium min-h-[100px]"
-                              placeholder="Brief summary of the idea..."
-                           />
-                        </div>
+                  <div className="flex flex-col gap-6">
+                     <div className="flex flex-col gap-1.5 focus-within:text-brand-600 transition-colors">
+                        <label className="text-xs font-bold text-gray-500 uppercase ml-1">Idea Title</label>
+                        <input 
+                           required
+                           type="text"
+                           value={formData.title}
+                           onChange={(e) => setFormData({...formData, title: e.target.value})}
+                           className="bg-gray-50 border border-gray-100 rounded-2xl p-4 text-gray-900 focus:ring-2 focus:ring-brand-500 outline-none transition-all font-bold shadow-sm"
+                           placeholder="e.g. Acme Tech Solutions"
+                        />
                      </div>
-                  ) : (
-                     // Review/Edit flow
-                     <>
-                        <div className="flex flex-col gap-1.5 pt-2">
-                           <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Name</label>
-                           <textarea 
-                              rows={1}
-                              required
-                              value={formData.title}
-                              onChange={(e) => setFormData({...formData, title: e.target.value})}
-                              className="bg-transparent text-2xl font-black focus:outline-none border-b border-dashed border-gray-200 pb-2 text-gray-900 resize-none"
-                              placeholder="Business Name..."
-                           />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                           <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Description</label>
-                           <textarea 
-                              required
-                              value={formData.description}
-                              onChange={(e) => setFormData({...formData, description: e.target.value})}
-                              className="bg-transparent text-sm font-medium focus:outline-none border-b border-dashed border-gray-200 pb-2 text-gray-600 resize-none"
-                              placeholder="A quick summary..."
-                           />
-                        </div>
-                        <div className="flex flex-col gap-1.5 flex-1 relative min-h-[300px]">
-                           <label className="text-[10px] font-bold text-brand-600 uppercase tracking-widest pl-1 flex items-center gap-1.5 mb-2 mt-2">
-                              <Bot size={12} /> Plan Details & Strategy
-                           </label>
-                           
-                           {viewIdea && viewIdea.plan && !formData.plan ? (
-                              <textarea 
-                              value={viewIdea.plan}
-                              onChange={(e) => setFormData({...formData, plan: e.target.value})}
-                              className="bg-[#fafafa] rounded-2xl p-5 text-sm leading-relaxed text-gray-700 h-full w-full border border-gray-100 flex-1 focus:ring-2 focus:ring-brand-500 focus:outline-none focus:bg-white font-mono"
-                           />) : (
-                              <div className="markdown-body bg-[#fafafa] rounded-2xl p-5 text-sm leading-relaxed text-gray-700 flex-1 overflow-y-auto border border-gray-100 prose prose-sm prose-p:text-gray-600 prose-headings:text-gray-900 max-w-none">
-                                 <ReactMarkdown>
-                                    {formData.plan || "*No plan generated. Write manually or generate with AI.*"}
-                                 </ReactMarkdown>
-                                 <div className="mt-8 pt-4 border-t border-dashed border-gray-200">
-                                    <p className="text-xs text-gray-400 italic mb-2">Edit Plan Content (Markdown supported)</p>
-                                    <textarea 
-                                       value={formData.plan}
-                                       onChange={(e) => setFormData({...formData, plan: e.target.value})}
-                                       className="bg-white rounded-xl p-4 text-xs font-mono text-gray-600 w-full min-h-[300px] border border-gray-200 focus:ring-2 focus:ring-brand-500 focus:outline-none"
-                                    />
-                                 </div>
-                              </div>
-                           )}
-                           
-                        </div>
-                     </>
-                  )}
+                     <div className="flex flex-col gap-1.5 focus-within:text-brand-600 transition-colors">
+                        <label className="text-xs font-bold text-gray-500 uppercase ml-1">Short Description</label>
+                        <textarea 
+                           required
+                           value={formData.description}
+                           onChange={(e) => setFormData({...formData, description: e.target.value})}
+                           className="bg-gray-50 border border-gray-100 rounded-2xl p-4 text-gray-900 focus:ring-2 focus:ring-brand-500 outline-none transition-all font-medium min-h-[100px] resize-none shadow-sm"
+                           placeholder="Brief summary of the idea..."
+                        />
+                     </div>
+                     <div className="flex flex-col gap-1.5 focus-within:text-brand-600 transition-colors flex-1">
+                        <label className="text-xs font-bold text-gray-500 uppercase ml-1">Business Plan</label>
+                        <textarea 
+                           value={formData.plan}
+                           onChange={(e) => setFormData({...formData, plan: e.target.value})}
+                           className="bg-gray-50 border border-gray-100 rounded-2xl p-4 text-gray-900 focus:ring-2 focus:ring-brand-500 outline-none transition-all font-medium h-full min-h-[300px] resize-none shadow-sm"
+                           placeholder="Write out your full business plan, target market, strategy, etc..."
+                        />
+                     </div>
+                  </div>
                </div>
 
                <div className="mt-6 shrink-0 pt-2 border-t border-gray-50 flex items-center gap-3">

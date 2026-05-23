@@ -14,7 +14,6 @@ export default function Goals() {
   const [plans, setPlans] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'goals' | 'plans'>('goals');
   const [isAddingGoal, setIsAddingGoal] = useState(false);
-  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [isAddingPlan, setIsAddingPlan] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null);
@@ -279,74 +278,6 @@ export default function Goals() {
       }
   };
 
-  const handleGeneratePlan = async () => {
-      if (!user) return;
-      setIsGeneratingPlan(true);
-      try {
-          const txs = await fetchTransactions(user.id) || [];
-          const txStr = txs.slice(0, 20).map((tx: any) => `${tx.date}: ${tx.type} of ${tx.amount} for ${tx.category}`).join('\n');
-          
-          const prompt = `You are an elite financial strategist. Analyze the user's situation and generate a personalized financial plan/strategy. 
-Income: ${userProfile?.income || 'Unknown'} ${currencyCode}
-Recent Expenses:
-${txStr}
-
-Generate a structured financial plan. The output must match the JSON schema explicitly. Generate between 3 to 7 specific, actionable tasks in tasksList.`;
-
-        const res = await fetch('/api/gemini/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: { parts: [{ text: prompt }] },
-                config: {
-                    responseMimeType: 'application/json',
-                    responseSchema: {
-                        type: "OBJECT",
-                        properties: {
-                             title: { type: "STRING", description: 'E.g. Aggressive Debt Payoff or Wealth Accumulation' },
-                             description: { type: "STRING", description: 'Short summary of the strategic approach' },
-                             tasksList: { 
-                                type: "ARRAY", 
-                                items: {
-                                    type: "OBJECT",
-                                    properties: {
-                                        id: { type: "STRING", description: 'Random unique string' },
-                                        title: { type: "STRING", description: 'Actionable task title' },
-                                        completed: { type: "BOOLEAN", description: 'Always false' }
-                                    },
-                                    required: ['id', 'title', 'completed']
-                                }
-                             }
-                        },
-                        required: ['title', 'description', 'tasksList']
-                    }
-                }
-            })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-        
-        if (data.text) {
-            const planDetails = JSON.parse(data.text);
-            await addPlan({
-                title: planDetails.title,
-                description: planDetails.description,
-                status: 'active',
-                progress: 0,
-                tasks: planDetails.tasksList.length,
-                completed_tasks: 0,
-                plan_data: { tasksList: planDetails.tasksList }
-            });
-            await loadData();
-        }
-      } catch (e) {
-          console.error("Failed to generate plan", e);
-          alert("Failed to generate plan. Please try again.");
-      } finally {
-          setIsGeneratingPlan(false);
-      }
-  };
-
   return (
     <div className="flex flex-col tracking-tight pt-4">
       <div className="flex items-center justify-between mb-8 pr-12">
@@ -410,7 +341,10 @@ Generate a structured financial plan. The output must match the JSON schema expl
                       <Target size={30} />
                   </div>
                   <h3 className="font-bold text-gray-900 mb-2">No Goals Yet</h3>
-                  <p className="text-sm text-gray-500 max-w-[200px] mx-auto">Create a savings goal to start tracking your future.</p>
+                  <p className="text-sm text-gray-500 max-w-[200px] mx-auto mb-6">Create a savings goal to start tracking your future.</p>
+                  <button onClick={() => setIsAddingGoal(true)} className="bg-brand-600 text-white font-bold py-2.5 px-6 rounded-xl text-sm shadow-sm active:scale-95 transition-transform inline-flex items-center gap-2">
+                     <Plus size={16} /> Create Goal
+                  </button>
               </div>
           ) : goals.map(goal => {
               const progress = Math.min((goal.saved_amount / goal.target_amount) * 100, 100);
@@ -516,29 +450,27 @@ Generate a structured financial plan. The output must match the JSON schema expl
                   </div>
               )
           })}
+          {goals.length > 0 && (
+             <button onClick={() => setIsAddingGoal(true)} className="w-full bg-white border border-dashed border-gray-300 text-gray-500 font-bold py-4 rounded-3xl mt-4 active:scale-95 transition-transform flex items-center justify-center gap-2 hover:bg-gray-50 hover:text-gray-900 shadow-sm">
+                <Plus size={18} /> Add Another Goal
+             </button>
+          )}
         </div>
       )}
 
       {activeTab === 'plans' && (
         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
            
-           <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 text-white shadow-lg mb-6 relative overflow-hidden">
-               <div className="absolute -right-6 -top-6 text-brand-400 opacity-20">
-                  <Sparkles size={120} />
-               </div>
-               <h3 className="text-lg font-bold mb-2 relative z-10">AI Strategy Coach</h3>
-               <p className="text-sm text-gray-300 mb-4 max-w-[200px] relative z-10">Let YouFi build a custom financial roadmap based on your spending.</p>
-               <button 
-                  onClick={handleGeneratePlan}
-                  disabled={isGeneratingPlan}
-                  className="bg-white text-gray-900 text-xs font-bold px-4 py-2 rounded-xl relative z-10 active:scale-95 transition-transform shadow-sm disabled:opacity-70 flex items-center gap-2">
-                  {isGeneratingPlan ? <Loader2 size={14} className="animate-spin" /> : "Generate New Plan"}
-               </button>
-           </div>
-
-           {plans.length === 0 && !isGeneratingPlan ? (
-               <div className="text-center py-8">
-                   <p className="text-sm text-gray-500">You don't have any active plans. Generate one above!</p>
+           {plans.length === 0 ? (
+               <div className="text-center py-10 bg-white rounded-3xl border border-gray-100 shadow-sm">
+                   <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-4 text-orange-600">
+                       <Briefcase size={30} />
+                   </div>
+                   <h3 className="font-bold text-gray-900 mb-2">No Plans Yet</h3>
+                   <p className="text-sm text-gray-500 max-w-[200px] mx-auto mb-6">You don't have any active plans. Create one to stay on track.</p>
+                   <button onClick={() => setIsAddingPlan(true)} className="bg-brand-600 text-white font-bold py-2.5 px-6 rounded-xl text-sm shadow-sm active:scale-95 transition-transform inline-flex items-center gap-2">
+                       <Plus size={16} /> Create Plan
+                   </button>
                </div>
            ) : plans.map(plan => (
              <div key={plan.id} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 transition-all duration-300">
@@ -601,6 +533,11 @@ Generate a structured financial plan. The output must match the JSON schema expl
                 )}
              </div>
            ))}
+           {plans.length > 0 && (
+              <button onClick={() => setIsAddingPlan(true)} className="w-full bg-white border border-dashed border-gray-300 text-gray-500 font-bold py-4 rounded-3xl mt-4 active:scale-95 transition-transform flex items-center justify-center gap-2 hover:bg-gray-50 hover:text-gray-900 shadow-sm">
+                 <Plus size={18} /> Add Another Plan
+              </button>
+           )}
         </div>
       )}
 

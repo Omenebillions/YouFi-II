@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Wallet, Tag, Mic, MicOff, CreditCard } from 'lucide-react';
+import { ArrowLeft, Wallet, Tag, Mic, MicOff, CreditCard, RotateCw } from 'lucide-react';
 import { addTransaction, fetchTransactions } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency, CURRENCIES } from '../lib/currency';
+import { parsePersonalDebt, serializePersonalDebt, generateRecurringPayments, RecurringPaymentInstance } from '../lib/debt';
 
 export default function AddTransaction() {
   const navigate = useNavigate();
@@ -13,10 +14,34 @@ export default function AddTransaction() {
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [repaymentDate, setRepaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [frequency, setFrequency] = useState('monthly');
+  const [duration, setDuration] = useState('');
+  const [recurringAmount, setRecurringAmount] = useState('');
+  const [payments, setPayments] = useState<RecurringPaymentInstance[]>([]);
   const [loading, setLoading] = useState(false);
   const [recentAdded, setRecentAdded] = useState<any[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (type === 'debt' && isRecurring) {
+      const parsedAmount = parseFloat(recurringAmount) || parseFloat(amount) || 0;
+      const generated = generateRecurringPayments(repaymentDate, frequency, duration, parsedAmount);
+      setPayments(generated);
+    } else {
+      setPayments([]);
+    }
+  }, [repaymentDate, frequency, duration, amount, isRecurring, type, recurringAmount]);
+
+  const handleUpdatePaymentInstance = (index: number, fields: Partial<RecurringPaymentInstance>) => {
+    setPayments(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], ...fields };
+      return copy;
+    });
+  };
 
   useEffect(() => {
     if (user) {
@@ -92,11 +117,22 @@ export default function AddTransaction() {
     if (!amount || !category || loading) return;
     
     setLoading(true);
+    const finalNote = type === 'debt' ? serializePersonalDebt({
+      repaymentDate: repaymentDate || date,
+      isRecurring,
+      frequency: isRecurring ? frequency : '',
+      duration: isRecurring ? duration : '',
+      recurringAmount: isRecurring ? parseFloat(recurringAmount) : 0,
+      payments: isRecurring ? payments : [],
+      status: 'unpaid',
+      note: note
+    }) : note;
+
     await addTransaction({
       type,
       amount: parseFloat(amount),
       category: category.toLowerCase(),
-      note,
+      note: finalNote,
       date
     });
     
@@ -211,12 +247,153 @@ export default function AddTransaction() {
           <input 
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => {
+              setDate(e.target.value);
+              setRepaymentDate(e.target.value);
+            }}
             onFocus={handleFocus}
             className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500 transition-all font-medium text-gray-700"
             required
           />
         </div>
+
+        {type === 'debt' && (
+          <div className="w-full flex flex-col gap-4 mb-4 bg-red-50/40 p-4 rounded-2xl border border-red-100/30">
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Repayment Date</label>
+              <input 
+                type="date"
+                value={repaymentDate}
+                onChange={(e) => setRepaymentDate(e.target.value)}
+                onFocus={handleFocus}
+                className="w-full p-3 bg-white border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500 transition-all font-medium text-gray-700"
+                required
+              />
+            </div>
+            
+            <div className="flex items-center justify-between pb-1">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block">Is Repayment Recurring?</label>
+                <span className="text-[10px] text-gray-400">Multiple scheduling dates</span>
+              </div>
+              <input 
+                type="checkbox"
+                checked={isRecurring}
+                onChange={(e) => setIsRecurring(e.target.checked)}
+                className="w-5 h-5 text-brand-600 rounded focus:ring-brand-500 bg-white border border-gray-300 pointer-events-auto"
+              />
+            </div>
+            
+            {isRecurring && (
+              <>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Frequency</label>
+                  <select
+                    value={frequency}
+                    onChange={(e) => setFrequency(e.target.value)}
+                    className="w-full p-3 bg-white border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500 transition-all font-medium text-gray-700"
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Duration / Limit</label>
+                  <input 
+                    type="text"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                    placeholder="e.g. 3 months, 6 weeks, until paid"
+                    onFocus={handleFocus}
+                    className="w-full p-3 bg-white border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500 transition-all font-medium text-gray-700 mb-2"
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {['3 weeks', '6 weeks', '3 months', '6 months', '1 year'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setDuration(preset)}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all ${
+                          duration === preset 
+                            ? 'bg-red-500 text-white border-red-500' 
+                            : 'bg-red-50/50 text-red-600 border-red-100/50 hover:bg-red-100/40'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Payment Amount per Recurring Payment</label>
+                  <input 
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    value={recurringAmount}
+                    onChange={(e) => setRecurringAmount(e.target.value)}
+                    placeholder="Defaults to total amount"
+                    onFocus={handleFocus}
+                    className="w-full p-3 bg-white border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500 transition-all font-medium text-gray-700"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">Specify how much is paid/owed on each recurring cycle.</p>
+                </div>
+
+                {payments.length > 0 && (
+                  <div className="mt-3 p-3 bg-white border border-gray-100 rounded-2xl flex flex-col gap-2">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase">Payment Schedule Dates & Custom Amounts ({payments.length})</span>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          const parsedAmount = parseFloat(recurringAmount) || parseFloat(amount) || 0;
+                          setPayments(generateRecurringPayments(repaymentDate, frequency, duration, parsedAmount));
+                        }} 
+                        className="text-[9px] font-extrabold text-brand-600 hover:text-brand-700"
+                      >
+                        Reset Schedule
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-2 max-h-[180px] overflow-y-auto pr-1">
+                      {payments.map((p, idx) => (
+                        <div key={p.id} className="flex gap-2 items-center justify-between border-b border-gray-50 pb-2 last:border-none last:pb-0">
+                          <span className="text-xs text-gray-500 font-semibold shrink-0">#{idx + 1}</span>
+                          <input 
+                            type="date"
+                            value={p.dueDate}
+                            onChange={(e) => handleUpdatePaymentInstance(idx, { dueDate: e.target.value })}
+                            className="bg-gray-50 p-1 px-1.5 border border-gray-100 rounded text-[11px] font-bold outline-none text-gray-700 w-[110px]"
+                          />
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-gray-400">{currentSymbol}</span>
+                            <input 
+                              type="number"
+                              value={p.amount}
+                              onChange={(e) => handleUpdatePaymentInstance(idx, { amount: parseFloat(e.target.value) || 0 })}
+                              className="bg-gray-50 p-1 px-1.5 border border-gray-100 rounded text-[11px] font-bold outline-none w-16 text-right text-gray-700"
+                            />
+                          </div>
+                          
+                          <select
+                            value={p.status}
+                            onChange={(e) => handleUpdatePaymentInstance(idx, { status: e.target.value as any })}
+                            className="bg-gray-50 p-1 border border-gray-100 rounded text-[10px] font-extrabold outline-none text-gray-600"
+                          >
+                            <option value="unpaid">Unpaid</option>
+                            <option value="paid">Paid</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
         
         <div className="w-full mb-6 relative">
           <label className="text-xs font-semibold text-gray-500 block mb-1">Details / Note</label>
@@ -258,9 +435,12 @@ export default function AddTransaction() {
         </div>
         
         <div className="flex flex-col gap-4 pb-32">
-            {recentAdded.slice(0, 4).map((tx: any, i: number) => {
+             {recentAdded.slice(0, 4).map((tx: any, i: number) => {
               const bgs = ['bg-[#ffedb5]/30 text-orange-500', 'bg-[#eef2ff] text-brand-500', 'bg-red-50 text-red-500', 'bg-green-50 text-green-500'];
               const bg = bgs[Math.abs(tx.category.length) % bgs.length];
+              const isDebt = tx.type === 'debt';
+              const debtMeta = isDebt ? parsePersonalDebt(tx) : null;
+              const displayNote = isDebt ? (debtMeta?.note || 'Debt') : (tx.note || new Date(tx.date).toLocaleDateString('en-GB'));
 
               return (
                 <div key={tx.id || i} className="flex items-center justify-between">
@@ -269,8 +449,20 @@ export default function AddTransaction() {
                         {tx.type === 'debt' ? <CreditCard size={20} /> : <Tag size={20} />}
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-gray-900 capitalize">{tx.category}</h4>
-                        <p className="text-xs text-gray-400 font-medium mt-0.5">{tx.note || new Date(tx.date).toLocaleDateString('en-GB')}</p>
+                        <h4 className="text-sm font-bold text-gray-900 capitalize">
+                          {tx.category}
+                          {isDebt && debtMeta?.status === 'paid' && (
+                            <span className="ml-2 text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-extrabold uppercase">Paid</span>
+                          )}
+                        </h4>
+                        <p className="text-xs text-gray-400 font-medium mt-0.5">
+                          {displayNote}
+                          {isDebt && debtMeta?.repaymentDate && (
+                            <span className="block text-[10px] text-red-500/80 font-semibold mt-0.5">
+                              Due: {debtMeta.repaymentDate} {debtMeta.isRecurring ? `(Recurring: ${debtMeta.frequency}${debtMeta.duration ? `, for ${debtMeta.duration}` : ''})` : ''}
+                            </span>
+                          )}
+                        </p>
                       </div>
                   </div>
                   <div className={`text-sm font-bold ${tx.type === 'income' ? 'text-success-500' : 'text-danger-500'}`}>

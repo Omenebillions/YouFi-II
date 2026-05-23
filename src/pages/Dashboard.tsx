@@ -11,6 +11,10 @@ import {
     BarChart, Bar, XAxis, YAxis, 
     ResponsiveContainer, Tooltip
 } from 'recharts';
+import { checkUpcomingPaymentNotifications } from '../lib/notifications';
+import { parsePersonalDebt } from '../lib/debt';
+
+import logo from '../assets/images/youfi_app_logo_1779452869088.png';
 
 export default function Dashboard() {
   const { userProfile, user } = useAuth();
@@ -42,7 +46,10 @@ export default function Dashboard() {
         processChartData(txRes.data);
       }
       if (bizRes.data) setBusinesses(bizRes.data);
-      if (upcomingRes.data) setUpcomingPayments(upcomingRes.data);
+      if (upcomingRes.data) {
+        setUpcomingPayments(upcomingRes.data);
+        checkUpcomingPaymentNotifications(upcomingRes.data);
+      }
       setLoading(false);
     };
 
@@ -71,7 +78,10 @@ export default function Dashboard() {
     const upcomingChannel = supabase.channel('dashboard-upcoming')
       .on('postgres_changes', { event: '*', schema: 'public', table: tables.upcomingPayments, filter: `user_id=eq.${user.id}` }, () => {
         supabase.from(tables.upcomingPayments).select('*').eq('user_id', user.id).then(({ data }) => {
-          if (data) setUpcomingPayments(data);
+          if (data) {
+            setUpcomingPayments(data);
+            checkUpcomingPaymentNotifications(data);
+          }
         });
       })
       .subscribe();
@@ -174,7 +184,7 @@ export default function Dashboard() {
 
   const incomeTotal = currentMonthTx.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
   const expenseTotal = currentMonthTx.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
-  const debtsTotal = transactions.filter(t => t.type === 'debt').reduce((acc, t) => acc + t.amount, 0);
+  const debtsTotal = transactions.filter(t => t.type === 'debt' && parsePersonalDebt(t).status !== 'paid').reduce((acc, t) => acc + t.amount, 0);
 
   const getIconForCategory = (category: string) => {
     switch (category.toLowerCase()) {
@@ -201,8 +211,8 @@ export default function Dashboard() {
       {/* Header Context */}
       <div className="flex justify-between items-center mb-8 pr-14">
           <div className="flex items-center gap-3">
-             <div className="w-12 h-12 rounded-2xl bg-brand-600 text-white flex items-center justify-center shadow-lg shadow-brand-200">
-                <TrendingUp size={24} />
+             <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center p-1 shadow-sm">
+                <img src={logo} alt="YouFi" className="w-full h-full object-contain" />
              </div>
              <div>
                <p className="text-gray-400 font-bold text-[10px] uppercase tracking-widest mb-0.5 leading-none">Welcome back,</p>

@@ -139,6 +139,12 @@ export default function BusinessList() {
     }
   }, [location.search]);
 
+  const fetchBusinessesOnly = async () => {
+    if (!user) return;
+    const { data } = await supabase.from('businesses').select('*').eq('user_id', user.id);
+    if (data) setBusinesses(data);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !formData.name || loading) return;
@@ -159,6 +165,7 @@ export default function BusinessList() {
       setShowModal(false);
       setEditingBiz(null);
       setFormData({ name: '', category: '', description: '' });
+      await fetchBusinessesOnly();
     } catch (error) {
       console.error("Error saving business:", error);
     } finally {

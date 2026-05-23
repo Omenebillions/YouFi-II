@@ -13,10 +13,10 @@ export default defineConfig(({mode}) => {
       VitePWA({
         registerType: 'autoUpdate',
         manifest: {
-          name: 'Business App',
-          short_name: 'BizApp',
-          description: 'Business Management App',
-          theme_color: '#ffffff',
+          name: 'YouFi - Personal Finance',
+          short_name: 'YouFi',
+          description: 'Personal Finance and SME Manager',
+          theme_color: '#4CAF50',
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg}'],

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
+import logo from '../assets/images/youfi_app_logo_1779452869088.png';
 
 export default function Layout() {
   const { user, userProfile, logout } = useAuth();
@@ -40,8 +41,18 @@ export default function Layout() {
   useEffect(() => {
     if (user) {
       loadSidebarBusinesses();
+      
+      const bizChannel = supabase.channel('layout-businesses')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'businesses', filter: `user_id=eq.${user.id}` }, () => {
+          loadSidebarBusinesses();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(bizChannel);
+      };
     }
-  }, [user, location.pathname]);
+  }, [user]);
 
   const loadSidebarBusinesses = async () => {
     try {
@@ -70,7 +81,11 @@ export default function Layout() {
       {/* Global Hamburger Menu Button */}
       <button 
          onClick={() => setDrawerOpen((prev) => !prev)}
-         className="fixed top-6 right-6 z-40 w-12 h-12 rounded-full bg-white border border-gray-100 flex items-center justify-center text-gray-700 shadow-lg transition-transform active:scale-90"
+         className={`fixed top-6 right-6 z-[60] w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-90 ${
+           drawerOpen 
+             ? 'bg-gray-50 text-gray-500 hover:bg-gray-100' 
+             : 'bg-white border border-gray-100 text-gray-700 shadow-lg hover:bg-gray-50'
+         }`}
       >
         {drawerOpen ? <X size={24} /> : <Menu size={24} />}
       </button>
@@ -79,14 +94,21 @@ export default function Layout() {
       <div 
          className={`fixed inset-y-0 right-0 z-50 w-72 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out ${drawerOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
-        <div className="p-6 h-full flex flex-col pt-20">
-          <div className="flex items-center gap-3 mb-8 px-2">
-            <div className="w-12 h-12 bg-brand-50 rounded-2xl flex items-center justify-center overflow-hidden">
+        <div className="p-6 h-full flex flex-col pt-16">
+          <div className="flex items-center gap-3 mb-6 px-2">
+            <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm border border-gray-100 flex items-center justify-center bg-white p-1">
+                 <img src={logo} alt="YouFi" className="w-full h-full object-contain" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 tracking-tight">YouFi</h2>
+          </div>
+          
+          <div className="flex items-center gap-3 mb-6 px-3 py-3 bg-gray-50 rounded-2xl border border-gray-100">
+            <div className="w-10 h-10 bg-brand-100 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
                {user?.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="User" /> : <div className="text-brand-600 font-bold">{userProfile?.name?.charAt(0) || 'U'}</div>}
             </div>
-            <div>
-               <h3 className="font-bold text-gray-900">{userProfile?.name || 'User'}</h3>
-               <p className="text-xs text-gray-500">{userProfile?.email}</p>
+            <div className="min-w-0">
+               <h3 className="font-bold text-gray-900 text-sm truncate">{userProfile?.name || 'User'}</h3>
+               <p className="text-[10px] text-gray-500 truncate">{userProfile?.email}</p>
             </div>
           </div>
           
@@ -122,6 +144,10 @@ export default function Layout() {
                  <Link to={`/business/${businessId}/products`} className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
                     <Package size={20} className="text-gray-500" />
                     <span>Inventory</span>
+                 </Link>
+                 <Link to={`/business/${businessId}/coach`} className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
+                    <MessageCircle size={20} className="text-brand-600" />
+                    <span>Business AI Advisor</span>
                  </Link>
                  <div className="h-px bg-gray-100 my-4"></div>
                  
@@ -194,6 +220,10 @@ export default function Layout() {
                      <LineChart size={20} className="text-brand-600" />
                      <span>Analysis & Insights</span>
                   </Link>
+                 <Link to="/coach" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
+                    <MessageCircle size={20} className="text-brand-600" />
+                    <span>AI Advisor</span>
+                 </Link>
                  <Link to="/business" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-brand-50 p-3 rounded-xl transition-colors border border-dashed border-brand-200 mt-2" onClick={() => setDrawerOpen(false)}>
                     <Briefcase size={20} className="text-brand-600" />
                     <span>Business (SME)</span>
