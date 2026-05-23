@@ -107,6 +107,10 @@ Don't compete on price alone. Understand your value proposition. If you provide 
 
 *Once your connection is restored, please ask your question again for personalized CFO-level analysis on your business!*`;
          setMessages(prev => [...prev, { role: 'model', text: offlineCFO }]);
+      } else if (e.message?.includes('API Key') || e.message?.includes('API_KEY_INVALID')) {
+         setMessages(prev => [...prev, { role: 'model', text: `**Configuration Error**: ${e.message}` }]);
+      } else if (e.message?.includes('high demand')) {
+         setMessages(prev => [...prev, { role: 'model', text: e.message }]);
       } else {
          setMessages(prev => [...prev, { role: 'model', text: "Sorry, I'm having trouble connecting right now. Please try again." }]);
       }

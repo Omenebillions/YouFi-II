@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, Edit2, Check, X } from 'lucide-react';
+import { ArrowLeft, Trash2, Edit2, Check, X, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, RotateCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchTransactions, deleteTransaction, updateTransaction, moveToTrash } from '../services/db';
 import { formatCurrency } from '../lib/currency';
+import { parsePersonalDebt, serializePersonalDebt, generateRecurringPayments, RecurringPaymentInstance } from '../lib/debt';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 
 export default function HistoryPage() {
@@ -13,12 +14,26 @@ export default function HistoryPage() {
   
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [txToDelete, setTxToDelete] = useState<any>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ amount: '', category: '', note: '', date: '', type: 'expense' });
+  const [editForm, setEditForm] = useState({ 
+    amount: '', 
+    category: '', 
+    note: '', 
+    date: '', 
+    type: 'expense',
+    repaymentDate: '',
+    isRecurring: false,
+    frequency: 'monthly',
+    duration: '',
+    status: 'unpaid',
+    recurringAmount: '',
+    payments: [] as RecurringPaymentInstance[]
+  });
 
   const currencyCode = userProfile?.currency || 'USD';
 
@@ -69,12 +84,22 @@ export default function HistoryPage() {
 
   const startEdit = (tx: any) => {
     setEditingId(tx.id);
+    const isDebt = tx.type === 'debt';
+    const debtMeta = isDebt ? parsePersonalDebt(tx) : null;
+    
     setEditForm({
       amount: tx.amount.toString(),
       category: tx.category,
-      note: tx.note || '',
+      note: isDebt ? (debtMeta?.note || '') : (tx.note || ''),
       date: tx.date || new Date().toISOString().split('T')[0],
-      type: tx.type || 'expense'
+      type: tx.type || 'expense',
+      repaymentDate: isDebt ? (debtMeta?.repaymentDate || '') : '',
+      isRecurring: isDebt ? (debtMeta?.isRecurring || false) : false,
+      frequency: isDebt ? (debtMeta?.frequency || 'monthly') : 'monthly',
+      duration: isDebt ? (debtMeta?.duration || '') : '',
+      status: isDebt ? (debtMeta?.status || 'unpaid') : 'unpaid',
+      recurringAmount: isDebt ? (debtMeta?.recurringAmount?.toString() || '') : '',
+      payments: isDebt ? (debtMeta?.payments || []) : []
     });
   };
 
@@ -84,10 +109,23 @@ export default function HistoryPage() {
 
   const saveEdit = async (id: string, originalTx: any) => {
     if (!editForm.amount || !editForm.category) return;
+    
+    const isDebt = editForm.type === 'debt';
+    const finalNote = isDebt ? serializePersonalDebt({
+      repaymentDate: editForm.repaymentDate || editForm.date,
+      isRecurring: editForm.isRecurring,
+      frequency: editForm.isRecurring ? editForm.frequency : '',
+      duration: editForm.isRecurring ? editForm.duration : '',
+      status: editForm.status as any || 'unpaid',
+      note: editForm.note,
+      recurringAmount: editForm.isRecurring ? parseFloat(editForm.recurringAmount) : 0,
+      payments: editForm.isRecurring ? editForm.payments : []
+    }) : editForm.note;
+
     await updateTransaction(id, {
       amount: parseFloat(editForm.amount),
       category: editForm.category,
-      note: editForm.note,
+      note: finalNote,
       date: editForm.date,
       type: editForm.type
     });
@@ -95,7 +133,69 @@ export default function HistoryPage() {
     loadData();
   };
 
-  const total = transactions.reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0);
+  const togglePersonalDebtStatus = async (tx: any) => {
+    const debtMeta = parsePersonalDebt(tx);
+    const newStatus = debtMeta.status === 'paid' ? 'unpaid' : 'paid';
+    
+    // Also toggle all individual payment statuses to match parent if toggled as a whole
+    const updatedPayments = debtMeta.payments?.map(p => ({
+      ...p,
+      status: newStatus
+    })) || [];
+
+    const updatedNote = serializePersonalDebt({
+      ...debtMeta,
+      status: newStatus,
+      payments: updatedPayments
+    });
+    await updateTransaction(tx.id, {
+      ...tx,
+      note: updatedNote
+    });
+    loadData();
+  };
+
+  const handleTogglePaymentInstanceStatus = async (tx: any, instanceId: string) => {
+    const isDebt = tx.type === 'debt';
+    if (!isDebt) return;
+    
+    const debtMeta = parsePersonalDebt(tx);
+    if (!debtMeta.payments) return;
+    
+    const updatedPayments = debtMeta.payments.map((p: any) => {
+      if (p.id === instanceId) {
+        return { ...p, status: p.status === 'paid' ? 'unpaid' : 'paid' };
+      }
+      return p;
+    });
+
+    // Check if ALL payments are marked as paid. If so, parent is marked paid. Otherwise unpaid.
+    const allPaid = updatedPayments.every((p: any) => p.status === 'paid');
+    const updatedStatus = allPaid ? 'paid' : 'unpaid';
+
+    const finalNote = serializePersonalDebt({
+      ...debtMeta,
+      payments: updatedPayments,
+      status: updatedStatus as any
+    });
+
+    await updateTransaction(tx.id, {
+      ...tx,
+      note: finalNote
+    });
+    
+    loadData();
+  };
+
+  const total = transactions.reduce((acc, t) => {
+    if (t.type === 'income') return acc + t.amount;
+    if (t.type === 'expense') return acc - t.amount;
+    if (t.type === 'debt') {
+      const isPaid = parsePersonalDebt(t).status === 'paid';
+      return isPaid ? acc : acc - t.amount;
+    }
+    return acc;
+  }, 0);
 
   const titles: Record<string, string> = {
     income: 'Total Income',
@@ -130,7 +230,11 @@ export default function HistoryPage() {
            <div className="text-center text-gray-400 py-8 bg-white rounded-2xl border border-gray-50">No {type} records found.</div>
         ) : (
           <div className="flex flex-col gap-3">
-            {transactions.map(tx => (
+            {transactions.map(tx => {
+              const isDebt = tx.type === 'debt';
+              const debtMeta = isDebt ? parsePersonalDebt(tx) : null;
+              
+              return (
               <div key={tx.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-50 flex flex-col justify-center min-h-[80px]">
                 {editingId === tx.id ? (
                    <div className="flex flex-col gap-3">
@@ -142,6 +246,7 @@ export default function HistoryPage() {
                         >
                           <option value="income">Income</option>
                           <option value="expense">Expense</option>
+                          <option value="debt">Debt</option>
                         </select>
                         <input 
                           type="number"
@@ -173,6 +278,136 @@ export default function HistoryPage() {
                           placeholder="Note"
                         />
                       </div>
+
+                      {editForm.type === 'debt' && (
+                        <div className="flex flex-col gap-2 p-3 bg-red-50/20 rounded-xl border border-red-100/30">
+                          <div className="flex gap-2 items-center">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Repayment Date:</span>
+                            <input 
+                              type="date"
+                              value={editForm.repaymentDate}
+                              onChange={(e) => setEditForm({...editForm, repaymentDate: e.target.value})}
+                              className="p-1 px-2 bg-white border border-gray-200 rounded text-xs outline-none focus:ring-1 focus:ring-brand-500"
+                            />
+                            
+                            <span className="text-[10px] font-bold text-gray-500 uppercase ml-2">Status:</span>
+                            <select
+                              value={editForm.status}
+                              onChange={(e) => setEditForm({...editForm, status: e.target.value})}
+                              className="p-1 bg-white border border-gray-200 rounded text-xs outline-none"
+                            >
+                              <option value="unpaid">Unpaid</option>
+                              <option value="paid">Paid</option>
+                            </select>
+                          </div>
+                          
+                          <div className="flex gap-3 items-center mt-1">
+                            <label className="flex items-center gap-1.5 text-xs text-gray-700 font-medium">
+                              <input 
+                                type="checkbox"
+                                checked={editForm.isRecurring}
+                                onChange={(e) => setEditForm({...editForm, isRecurring: e.target.checked})}
+                                className="rounded text-brand-600 focus:ring-brand-500"
+                              />
+                              Is Recurring
+                            </label>
+                            
+                            {editForm.isRecurring && (
+                              <div className="flex flex-col gap-2 mt-2 w-full">
+                                <div className="flex gap-2 items-center flex-wrap">
+                                  <select
+                                    value={editForm.frequency}
+                                    onChange={(e) => setEditForm({...editForm, frequency: e.target.value})}
+                                    className="p-1 bg-white border border-gray-200 rounded text-xs outline-none"
+                                  >
+                                    <option value="weekly">Weekly</option>
+                                    <option value="monthly">Monthly</option>
+                                    <option value="yearly">Yearly</option>
+                                  </select>
+                                  
+                                  <input 
+                                    type="text"
+                                    value={editForm.duration}
+                                    onChange={(e) => setEditForm({...editForm, duration: e.target.value})}
+                                    placeholder="Duration (e.g. 3 months)"
+                                    className="p-1 px-2 w-[160px] bg-white border border-gray-200 rounded text-xs outline-none focus:ring-1 focus:ring-brand-500"
+                                  />
+                                </div>
+                                
+                                <div className="flex flex-col gap-1 mt-1">
+                                  <span className="text-[10px] font-bold text-gray-500 uppercase">Payment Amount per Cycle:</span>
+                                  <input 
+                                    type="number"
+                                    value={editForm.recurringAmount}
+                                    onChange={(e) => setEditForm({...editForm, recurringAmount: e.target.value})}
+                                    placeholder="Defaults to total amount"
+                                    className="p-1 px-2 w-full bg-white border border-gray-200 rounded text-xs outline-none focus:ring-1 focus:ring-brand-505"
+                                  />
+                                </div>
+
+                                <div className="p-2 bg-white/50 border border-gray-200/50 rounded-lg flex flex-col gap-1.5 mt-1 shadow-inner">
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-[9px] font-bold text-gray-500 uppercase">Instalments List ({editForm.payments?.length || 0})</span>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        const parsedAmount = parseFloat(editForm.recurringAmount) || parseFloat(editForm.amount) || 0;
+                                        setEditForm({
+                                          ...editForm,
+                                          payments: generateRecurringPayments(editForm.repaymentDate || editForm.date, editForm.frequency, editForm.duration, parsedAmount)
+                                        });
+                                      }} 
+                                      className="text-[9px] font-extrabold text-brand-600 hover:text-brand-700"
+                                    >
+                                      Generate
+                                    </button>
+                                  </div>
+                                  <div className="flex flex-col gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+                                    {(editForm.payments || []).map((p, idx) => (
+                                      <div key={p.id} className="flex gap-2 items-center justify-between border-b border-gray-100 pb-1.5 last:border-none last:pb-0">
+                                        <span className="text-[10px] text-gray-500 font-bold">#{idx + 1}</span>
+                                        <input 
+                                          type="date"
+                                          value={p.dueDate}
+                                          onChange={(e) => {
+                                            const updated = [...editForm.payments];
+                                            updated[idx] = { ...updated[idx], dueDate: e.target.value };
+                                            setEditForm({ ...editForm, payments: updated });
+                                          }}
+                                          className="bg-gray-50 p-0.5 border border-gray-200 rounded text-[10px] focus:ring-1 focus:ring-brand-500 font-bold text-gray-700 w-[95px]"
+                                        />
+                                        <input 
+                                          type="number"
+                                          value={p.amount}
+                                          onChange={(e) => {
+                                            const updated = [...editForm.payments];
+                                            updated[idx] = { ...updated[idx], amount: parseFloat(e.target.value) || 0 };
+                                            setEditForm({ ...editForm, payments: updated });
+                                          }}
+                                          className="bg-gray-50 p-0.5 border border-gray-200 rounded text-[10px] text-right focus:ring-1 focus:ring-brand-500 font-bold text-gray-700 w-[55px]"
+                                        />
+                                        <select
+                                          value={p.status}
+                                          onChange={(e) => {
+                                            const updated = [...editForm.payments];
+                                            updated[idx] = { ...updated[idx], status: e.target.value as any };
+                                            setEditForm({ ...editForm, payments: updated });
+                                          }}
+                                          className="bg-gray-50 p-0.5 border border-gray-200 rounded text-[9px] font-extrabold outline-none text-gray-650"
+                                        >
+                                          <option value="unpaid">Unpaid</option>
+                                          <option value="paid">Paid</option>
+                                        </select>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex justify-end gap-2 mt-1">
                         <button onClick={cancelEdit} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
                            <X size={16} />
@@ -183,38 +418,131 @@ export default function HistoryPage() {
                       </div>
                    </div>
                 ) : (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-900 capitalize">{tx.category} {tx.note && <span className="font-normal text-gray-500">- {tx.note}</span>}</h4>
-                      {tx.date && (() => {
-                          const d = new Date(tx.date);
-                          const mm = String(d.getMonth() + 1).padStart(2, '0');
-                          const dd = String(d.getDate()).padStart(2, '0');
-                          const yyyy = d.getFullYear();
-                          return <p className="text-xs text-gray-400 font-medium mt-1">{mm}/{dd}/{yyyy}</p>;
-                      })()}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-sm font-bold mr-2 ${tx.type === 'income' ? 'text-success-500' : 'text-danger-500'}`}>
-                        {tx.type === 'income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount), currencyCode)}
-                      </span>
-                      <button 
-                        onClick={() => startEdit(tx)}
-                        className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div 
+                        className={`flex-1 min-w-0 ${isDebt && debtMeta?.isRecurring ? 'cursor-pointer hover:bg-gray-50/50 p-1.5 -ml-1.5 rounded-xl transition-colors' : ''}`}
+                        onClick={() => {
+                          if (isDebt && debtMeta?.isRecurring) {
+                            setExpandedTxId(expandedTxId === tx.id ? null : tx.id);
+                          }
+                        }}
                       >
-                        <Edit2 size={16} />
-                      </button>
-                      <button 
-                        onClick={() => { setTxToDelete(tx); setShowDeleteModal(true); }}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                        <h4 className="text-sm font-bold text-gray-900 capitalize flex items-center gap-2 flex-wrap">
+                          <span>{tx.category}</span>
+                          {isDebt && (
+                            <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full ${debtMeta?.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {debtMeta?.status || 'unpaid'}
+                            </span>
+                          )}
+                          {debtMeta?.note && <span className="font-normal text-gray-500">- {debtMeta.note}</span>}
+                        </h4>
+                        <div className="flex flex-col gap-1 mt-1">
+                          {tx.date && (() => {
+                              const d = new Date(tx.date);
+                              const mm = String(d.getMonth() + 1).padStart(2, '0');
+                              const dd = String(d.getDate()).padStart(2, '0');
+                              const yyyy = d.getFullYear();
+                              return <p className="text-xs text-gray-400 font-medium">{mm}/{dd}/{yyyy}</p>;
+                          })()}
+                          {isDebt && debtMeta?.repaymentDate && (
+                            <p className="text-[10px] text-red-500 font-bold flex items-center gap-1 mt-0.5">
+                              Repayment: {debtMeta.repaymentDate} {debtMeta.isRecurring ? `(Recurring: ${debtMeta.frequency}${debtMeta.duration ? `, for ${debtMeta.duration}` : ''})` : ''}
+                              {debtMeta.isRecurring && (expandedTxId === tx.id ? <ChevronUp size={12} className="inline ml-1 text-gray-550" /> : <ChevronDown size={12} className="inline ml-1 text-gray-550" />)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isDebt && (
+                          <button 
+                            onClick={() => togglePersonalDebtStatus(tx)}
+                            className={`mr-1 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${debtMeta?.status === 'paid' ? 'bg-orange-50 text-orange-600 hover:bg-orange-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}
+                          >
+                            {debtMeta?.status === 'paid' ? 'Mark Unpaid' : 'Mark Paid'}
+                          </button>
+                        )}
+                        <span className={`text-sm font-bold mr-2 ${tx.type === 'income' ? 'text-success-500' : 'text-danger-500'}`}>
+                          {tx.type === 'income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount), currencyCode)}
+                        </span>
+                        <button 
+                          onClick={() => startEdit(tx)}
+                          className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button 
+                          onClick={() => { setTxToDelete(tx); setShowDeleteModal(true); }}
+                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
+
+                    {isDebt && debtMeta?.isRecurring && expandedTxId === tx.id && (
+                      <div className="mt-4 p-4 bg-gray-50/50 rounded-2xl border border-gray-100/55 flex flex-col gap-2">
+                        <div className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest flex justify-between">
+                          <span>Dynamic Installment Schedule</span>
+                          <span>Tap instance to toggle status</span>
+                        </div>
+                        {(!debtMeta.payments || debtMeta.payments.length === 0) ? (
+                          <div className="flex flex-col gap-1.5 items-center py-4 bg-white rounded-xl border border-dashed border-gray-200">
+                            <p className="text-xs text-gray-400 italic font-medium">No installment schedule generated yet.</p>
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                // Auto generate and save schedule
+                                const parsedAmount = debtMeta.recurringAmount || tx.amount;
+                                const generated = generateRecurringPayments(debtMeta.repaymentDate || tx.date, debtMeta.frequency || 'monthly', debtMeta.duration || '3 months', parsedAmount);
+                                updateTransaction(tx.id, {
+                                  ...tx,
+                                  note: serializePersonalDebt({
+                                    ...debtMeta,
+                                    payments: generated
+                                  })
+                                }).then(() => loadData());
+                              }}
+                              className="text-xs font-bold text-brand-600 hover:underline"
+                            >
+                              Generate Schedule
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-1.5 mt-1">
+                            {debtMeta.payments.map((p: any, idx: number) => (
+                              <div 
+                                key={p.id} 
+                                onClick={() => handleTogglePaymentInstanceStatus(tx, p.id)}
+                                className="bg-white p-3 rounded-xl border border-gray-100 flex items-center justify-between hover:bg-gray-50 active:scale-[0.99] transition-all cursor-pointer select-none shadow-sm"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${p.status === 'paid' ? 'bg-green-500 border-green-500 text-white shadow-sm shadow-green-200' : 'border-gray-300'}`}>
+                                    {p.status === 'paid' && <Check size={12} strokeWidth={4} />}
+                                  </div>
+                                  <div>
+                                    <span className="text-xs text-gray-800 font-bold block">Installment #{idx + 1}</span>
+                                    <span className="text-[10px] text-gray-400 font-semibold">{new Date(p.dueDate).toLocaleDateString('en-GB')}</span>
+                                  </div>
+                                </div>
+                                <div className="text-right flex items-center gap-3">
+                                  <span className="text-xs font-black text-gray-800">
+                                     {formatCurrency(p.amount || tx.amount, currencyCode)}
+                                  </span>
+                                  <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${p.status === 'paid' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                     {p.status}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>

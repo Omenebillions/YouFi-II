@@ -214,7 +214,13 @@ export default function AutoImport() {
             selected: true
         })));
       } catch (err: any) {
-        setError(err.message || "Failed to parse text. Please try again.");
+        if (err.message?.includes('API Key') || err.message?.includes('API_KEY_INVALID')) {
+           setError("Configuration Error: " + err.message);
+        } else if (err.message?.includes('high demand')) {
+           setError(err.message);
+        } else {
+           setError(err.message || "Failed to parse text. Please try again.");
+        }
       } finally {
         setLoading(false);
       }
@@ -334,7 +340,13 @@ export default function AutoImport() {
 
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Failed to parse file. Please try again.');
+      if (err.message?.includes('API Key') || err.message?.includes('API_KEY_INVALID')) {
+        setError("Configuration Error: " + err.message);
+      } else if (err.message?.includes('high demand')) {
+        setError(err.message);
+      } else {
+        setError(err.message || 'Failed to parse file. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
