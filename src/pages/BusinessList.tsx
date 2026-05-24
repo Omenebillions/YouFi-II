@@ -357,7 +357,7 @@ export default function BusinessList() {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between px-1 mb-2">
+          <div className="flex items-center justify-between px-1 mb-2 pr-16">
              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{businesses.length} Active Businesses</span>
              <button onClick={handleAddClick} className="w-8 h-8 bg-gray-900 text-white rounded-xl flex items-center justify-center shadow-lg active:scale-90 transition-all">
                 <Plus size={20} />

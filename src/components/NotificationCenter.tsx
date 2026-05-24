@@ -5,11 +5,22 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 
-export default function NotificationCenter() {
+export default function NotificationCenter({ businessId }: { businessId?: string }) {
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  // Filter notifications based on businessId
+  const filteredNotifications = notifications.filter(notif => {
+    if (businessId) {
+      return notif.businessId === businessId || notif.data?.businessId === businessId;
+    } else {
+      return !notif.businessId && !notif.data?.businessId;
+    }
+  });
+
+  const filteredUnreadCount = filteredNotifications.filter(n => !n.read).length;
 
   // Close when clicking outside
   useEffect(() => {
@@ -64,13 +75,13 @@ export default function NotificationCenter() {
         aria-label="Toggle notifications"
         id="notification-trigger-btn"
       >
-        <Bell size={18} className={unreadCount > 0 ? 'animate-bounce' : ''} />
-        {unreadCount > 0 && (
+        <Bell size={18} className={filteredUnreadCount > 0 ? 'animate-bounce' : ''} />
+        {filteredUnreadCount > 0 && (
           <span 
             className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center px-1 animate-pulse"
             id="unread-badge-count"
           >
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {filteredUnreadCount > 9 ? '9+' : filteredUnreadCount}
           </span>
         )}
       </button>
@@ -83,7 +94,7 @@ export default function NotificationCenter() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 mt-3 w-80 md:w-96 bg-white rounded-2xl border border-gray-100 shadow-[0_12px_30px_-6px_rgba(0,0,0,0.1)] overflow-hidden"
+            className="fixed top-[80px] left-1/2 -translate-x-1/2 w-[calc(100vw-32px)] max-w-[400px] sm:absolute sm:left-auto sm:-translate-x-0 sm:top-full sm:right-0 sm:mt-3 sm:w-80 md:w-96 bg-white rounded-3xl border border-gray-100 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] overflow-hidden"
             id="notifications-popover"
           >
             {/* Header */}
@@ -92,7 +103,7 @@ export default function NotificationCenter() {
                 <BellRing size={16} className="text-gray-900" />
                 <h3 className="font-bold text-sm text-gray-900">Notifications</h3>
               </div>
-              {unreadCount > 0 && (
+              {filteredUnreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
                   className="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1 transition-colors"
@@ -106,7 +117,7 @@ export default function NotificationCenter() {
 
             {/* List */}
             <div className="max-h-[380px] overflow-y-auto divide-y divide-gray-50" id="notification-list-scrollable">
-              {notifications.length === 0 ? (
+              {filteredNotifications.length === 0 ? (
                 <div className="p-8 text-center flex flex-col items-center justify-center text-gray-400">
                   <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mb-3">
                     <Bell size={20} className="text-gray-300" />
@@ -115,7 +126,7 @@ export default function NotificationCenter() {
                   <p className="text-xs mt-1 text-gray-400">No push or system alerts active.</p>
                 </div>
               ) : (
-                notifications.map((notif) => {
+                filteredNotifications.map((notif) => {
                   const relativeTime = (() => {
                     try {
                       return formatDistanceToNow(new Date(notif.receivedAt), { addSuffix: true });
