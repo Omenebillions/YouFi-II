@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
+import NotificationCenter from '../components/NotificationCenter';
 
 export default function BusinessDashboard() {
   const { businessId } = useParams();
@@ -359,7 +360,7 @@ export default function BusinessDashboard() {
   return (
     <div className="flex flex-col tracking-tight pt-4 pb-24">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8 pr-12">
+      <div className="flex items-center justify-between mb-8 pr-20">
         <button onClick={() => navigate('/business')} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
           <ArrowLeft size={20} />
         </button>
@@ -367,9 +368,7 @@ export default function BusinessDashboard() {
             <h1 className="text-xl font-bold text-gray-900">{business?.name || 'Loading...'}</h1>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">{business?.category}</span>
         </div>
-        <button className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-300">
-           <MoreVertical size={20} />
-        </button>
+        <NotificationCenter businessId={businessId} />
       </div>
 
       {/* Hero Stats */}

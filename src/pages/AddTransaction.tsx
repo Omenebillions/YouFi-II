@@ -28,12 +28,12 @@ export default function AddTransaction() {
   useEffect(() => {
     if (type === 'debt' && isRecurring) {
       const parsedAmount = parseFloat(recurringAmount) || parseFloat(amount) || 0;
-      const generated = generateRecurringPayments(repaymentDate, frequency, duration, parsedAmount, description);
+      const generated = generateRecurringPayments(repaymentDate, frequency, duration, parsedAmount, note);
       setPayments(generated);
     } else {
       setPayments([]);
     }
-  }, [repaymentDate, frequency, duration, amount, isRecurring, type, recurringAmount, description]);
+  }, [repaymentDate, frequency, duration, amount, isRecurring, type, recurringAmount, note]);
 
   const handleUpdatePaymentInstance = (index: number, fields: Partial<RecurringPaymentInstance>) => {
     setPayments(prev => {
@@ -350,7 +350,7 @@ export default function AddTransaction() {
                         type="button" 
                         onClick={() => {
                           const parsedAmount = parseFloat(recurringAmount) || parseFloat(amount) || 0;
-                          setPayments(generateRecurringPayments(repaymentDate, frequency, duration, parsedAmount, description));
+                          setPayments(generateRecurringPayments(repaymentDate, frequency, duration, parsedAmount, note));
                         }} 
                         className="text-[9px] font-extrabold text-brand-600 hover:text-brand-700"
                       >

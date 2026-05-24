@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useNativeBridge } from '../hooks/useNativeBridge';
+import { supabase } from '../services/supabase';
+import { useAuth } from './AuthContext';
 
 export interface Notification {
   id: string;
@@ -8,6 +10,7 @@ export interface Notification {
   receivedAt: string;
   read: boolean;
   data?: any;
+  businessId?: string;
 }
 
 interface NotificationContextProps {
@@ -23,29 +26,133 @@ const NotificationContext = createContext<NotificationContextProps | undefined>(
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { bridge } = useNativeBridge();
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const fetchNotifications = useCallback(async () => {
-    if (!bridge) return;
     setLoading(true);
     try {
-      const list = await bridge.getNotifications();
-      setNotifications(list || []);
-      const count = await bridge.getUnreadCount();
-      setUnreadCount(count || 0);
+      let bridgeNotifs: Notification[] = [];
+      if (bridge && bridge.getNotifications) {
+        bridgeNotifs = await bridge.getNotifications();
+      }
+
+      // Generate dynamic notifications from real database records (Upcoming payments and Debts)
+      const dynamicNotifs: Notification[] = [];
+      
+      if (user) {
+        const d = new Date();
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const todayStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+        // Fetch upcoming payments
+        const { data: upcoming } = await supabase
+          .from('upcoming_payments')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'unpaid');
+          
+        if (upcoming) {
+          for (const item of upcoming) {
+            const dueDateStr = item.due_date;
+            
+            // Calculate day difference ignoring time
+            const tDate = new Date(todayStr);
+            const dDate = new Date(dueDateStr);
+            const diffDays = Math.ceil((dDate.getTime() - tDate.getTime()) / (1000 * 3600 * 24));
+
+            if (diffDays === 7 || diffDays === 1 || diffDays === 0 || diffDays < 0) {
+              const isOverdue = diffDays < 0;
+              let titlePrefix = diffDays === 0 ? 'Payment Due Today ⏰' : diffDays === 1 ? 'Payment Due Tomorrow ⏰' : diffDays === 7 ? 'Payment Due in 7 Days ⏰' : 'Overdue Payment ⚠️';
+
+              dynamicNotifs.push({
+                id: `dynamic_payment_${item.id}`,
+                title: titlePrefix,
+                body: `Your payment of ${item.amount} for ${item.title} is ${isOverdue ? 'overdue' : 'due soon'}.`,
+                receivedAt: new Date().toISOString(),
+                read: false,
+              });
+            }
+          }
+        }
+
+        // Fetch business debts
+        const { data: debts } = await supabase
+          .from('business_debts')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'unpaid');
+          
+        if (debts) {
+          for (const item of debts) {
+            const dueDateStr = item.due_date;
+            
+            const tDate = new Date(todayStr);
+            const dDate = new Date(dueDateStr);
+            const diffDays = Math.ceil((dDate.getTime() - tDate.getTime()) / (1000 * 3600 * 24));
+
+            if (diffDays === 7 || diffDays === 1 || diffDays === 0 || diffDays < 0) {
+              const isOverdue = diffDays < 0;
+              let titlePrefix = diffDays === 0 ? 'Business Debt Due Today ⏰' : diffDays === 1 ? 'Business Debt Due Tomorrow ⏰' : diffDays === 7 ? 'Business Debt Due in 7 Days ⏰' : 'Business Debt Overdue ⚠️';
+
+              dynamicNotifs.push({
+                id: `dynamic_debt_${item.id}`,
+                title: titlePrefix,
+                body: `Your debt of ${item.amount} to ${item.lender} is ${isOverdue ? 'overdue' : 'due soon'}.`,
+                receivedAt: new Date().toISOString(),
+                read: false,
+                businessId: item.business_id,
+              });
+            }
+          }
+        }
+      }
+
+      // Merge avoiding duplicates (prefer bridge if same ID)
+      const combinedMap = new Map();
+      bridgeNotifs.forEach(n => combinedMap.set(n.id, n));
+      
+      // We read dynamic statuses from localStorage to keep track of 'read' state for dynamically generated ones
+      let localReadState: Record<string, boolean> = {};
+      try {
+        const stored = localStorage.getItem('youfi_dynamic_read_state');
+        if (stored) localReadState = JSON.parse(stored);
+      } catch (e) {}
+      
+      dynamicNotifs.forEach(n => {
+        if (localReadState[n.id]) n.read = true;
+        if (!combinedMap.has(n.id)) combinedMap.set(n.id, n);
+      });
+
+      const finalNotifs = Array.from(combinedMap.values()).sort(
+        (a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime()
+      );
+      
+      setNotifications(finalNotifs);
+      setUnreadCount(finalNotifs.filter(n => !n.read).length);
     } catch (error) {
       console.error('[NotificationContext] Error fetching notifications:', error);
     } finally {
       setLoading(false);
     }
-  }, [bridge]);
+  }, [bridge, user]);
 
   const markAsRead = async (id: string) => {
-    if (!bridge) return;
     try {
-      await bridge.markNotificationAsRead(id);
+      if (id.startsWith('dynamic_')) {
+        let localReadState: Record<string, boolean> = {};
+        try {
+          const stored = localStorage.getItem('youfi_dynamic_read_state');
+          if (stored) localReadState = JSON.parse(stored);
+        } catch (e) {}
+        localReadState[id] = true;
+        localStorage.setItem('youfi_dynamic_read_state', JSON.stringify(localReadState));
+      } else if (bridge) {
+        await bridge.markNotificationAsRead(id);
+      }
+      
       setNotifications(prev =>
         prev.map(n => (n.id === id ? { ...n, read: true } : n))
       );
@@ -56,10 +163,27 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   };
 
   const markAllAsRead = async () => {
-    if (!bridge) return;
     try {
-      await bridge.markAllAsRead();
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      if (bridge) {
+        await bridge.markAllAsRead();
+      }
+      
+      let localReadState: Record<string, boolean> = {};
+      try {
+        const stored = localStorage.getItem('youfi_dynamic_read_state');
+        if (stored) localReadState = JSON.parse(stored);
+      } catch (e) {}
+      
+      let updatedCount = 0;
+      setNotifications(prev => prev.map(n => {
+        if (n.id.startsWith('dynamic_')) {
+          localReadState[n.id] = true;
+        }
+        if (!n.read) updatedCount++;
+        return { ...n, read: true };
+      }));
+      
+      localStorage.setItem('youfi_dynamic_read_state', JSON.stringify(localReadState));
       setUnreadCount(0);
     } catch (error) {
       console.error('[NotificationContext] Error marking all as read:', error);
@@ -67,37 +191,46 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   };
 
   useEffect(() => {
-    if (bridge) {
-      fetchNotifications();
+    fetchNotifications();
 
-      // Listen for push notifications arriving in foreground/background via native bridge
-      if (bridge.onNotificationReceived) {
-        bridge.onNotificationReceived((newNotif: any) => {
-          if (!newNotif) return;
-          console.log('[NotificationContext] Notification received via bridge:', newNotif);
-          
-          const formatted: Notification = {
-            id: newNotif.id || 'notif-' + Date.now(),
-            title: newNotif.title || 'New Notification',
-            body: newNotif.body || '',
-            receivedAt: newNotif.receivedAt || new Date().toISOString(),
-            read: !!newNotif.read,
-            data: newNotif.data
-          };
+    if (bridge && bridge.onNotificationReceived) {
+      bridge.onNotificationReceived((newNotif: any) => {
+        if (!newNotif) return;
+        console.log('[NotificationContext] Notification received via bridge:', newNotif);
+        
+        const formatted: Notification = {
+          id: newNotif.id || 'notif-' + Date.now(),
+          title: newNotif.title || 'New Notification',
+          body: newNotif.body || '',
+          receivedAt: newNotif.receivedAt || new Date().toISOString(),
+          read: !!newNotif.read,
+          data: newNotif.data
+        };
 
-          setNotifications(prev => {
-            // Avoid duplicate additions
-            if (prev.some(n => n.id === formatted.id)) return prev;
-            return [formatted, ...prev];
-          });
-          
-          if (!formatted.read) {
-            setUnreadCount(prev => prev + 1);
-          }
+        setNotifications(prev => {
+          if (prev.some(n => n.id === formatted.id)) return prev;
+          const updated = [formatted, ...prev];
+          setUnreadCount(updated.filter(x => !x.read).length);
+          return updated;
         });
+      });
+    }
+
+    if (user) {
+      const channel = supabase.channel('notification-context-listener')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'upcoming_payments', filter: `user_id=eq.${user.id}` }, () => {
+          fetchNotifications();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'business_debts', filter: `user_id=eq.${user.id}` }, () => {
+          fetchNotifications();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
       }
     }
-  }, [bridge, fetchNotifications]);
+  }, [bridge, fetchNotifications, user]);
 
   return (
     <NotificationContext.Provider
