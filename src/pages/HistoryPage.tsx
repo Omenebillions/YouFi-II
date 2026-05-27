@@ -140,7 +140,7 @@ export default function HistoryPage() {
     // Also toggle all individual payment statuses to match parent if toggled as a whole
     const updatedPayments = debtMeta.payments?.map(p => ({
       ...p,
-      status: newStatus
+      status: newStatus as 'unpaid' | 'paid'
     })) || [];
 
     const updatedNote = serializePersonalDebt({

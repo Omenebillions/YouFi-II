@@ -221,11 +221,13 @@ CREATE POLICY "Users can only access their own ideas"
 CREATE TABLE IF NOT EXISTS public.upcoming_payments (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   amount DECIMAL NOT NULL,
   due_date DATE NOT NULL,
   is_recurring BOOLEAN DEFAULT FALSE,
   frequency TEXT,
+  status TEXT DEFAULT 'unpaid',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

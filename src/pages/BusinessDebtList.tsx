@@ -448,14 +448,14 @@ export default function BusinessDebtList() {
       try {
         setLoading(true);
         const result = await bridge.scanReceipt();
-        if (result && result.success) {
+        if (result) {
           setFormData(prev => ({
             ...prev,
-            lender: result.lender || prev.lender,
+            lender: result.merchant || prev.lender,
             amount: result.amount ? result.amount.toString() : prev.amount,
             dueDate: result.date || prev.dueDate
           }));
-          alert(`OCR Read Success! Auto-filled lender "${result.lender || 'N/A'}" and amount: ${result.amount || 'N/A'}.`);
+          alert(`OCR Read Success! Auto-filled lender "${result.merchant || 'N/A'}" and amount: ${result.amount || 'N/A'}.`);
         } else {
           alert('Could not auto-fill details from receipt text. Please input values manually.');
         }

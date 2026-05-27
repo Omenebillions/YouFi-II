@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, TrendingUp, TrendingDown,
-  Search, Calendar, Trash2, Edit2, X
+  Search, Calendar, Trash2, Edit2, X, AlertTriangle, Play, Sparkles
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useNativeBridge } from '../hooks/useNativeBridge';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { moveToTrash } from '../services/db';
@@ -27,6 +28,12 @@ export default function BusinessTransactionList() {
   const [txToDelete, setTxToDelete] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+
+  const { isPremium, bridge } = useNativeBridge();
+  const [transactionLimit, setTransactionLimit] = useState(() => {
+    return Number(localStorage.getItem(`youfi_limit_${businessId}`)) || 5;
+  });
+  const [adLoading, setAdLoading] = useState(false);
 
   const fetchTransactionsForUI = async () => {
     if (!businessId || !type || !user) return;
@@ -132,6 +139,36 @@ export default function BusinessTransactionList() {
        console.error("Error saving transaction:", error);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleWatchAd = async () => {
+    if (adLoading) return;
+    setAdLoading(true);
+    try {
+      if (bridge?.showRewardedAd) {
+        const result = await bridge.showRewardedAd();
+        if (result && result.reward > 0) {
+          const nextLimit = transactionLimit + result.reward;
+          setTransactionLimit(nextLimit);
+          localStorage.setItem(`youfi_limit_${businessId}`, String(nextLimit));
+          alert(`Congratulations! You earned +${result.reward} transactions limit! Total allowed: ${nextLimit}`);
+        } else {
+          alert("Ad was cancelled. Finish watching the video to secure extra transactions.");
+        }
+      } else {
+        const watchSuccess = window.confirm("Watch simulated video ad to gain +15 free SME transaction logs?");
+        if (watchSuccess) {
+          const nextLimit = transactionLimit + 15;
+          setTransactionLimit(nextLimit);
+          localStorage.setItem(`youfi_limit_${businessId}`, String(nextLimit));
+          alert(`Congratulations! Sim completed. You earned +15 transactions limit! Total allowed: ${nextLimit}`);
+        }
+      }
+    } catch (err) {
+      console.error("[Ad Reward Error]:", err);
+    } finally {
+      setAdLoading(false);
     }
   };
 
@@ -454,81 +491,116 @@ export default function BusinessTransactionList() {
                      <X size={20} />
                   </button>
                </div>
-               <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                  {type === 'all' && (
-                    <div className="flex flex-col gap-1.5">
-                       <label className="text-xs font-bold text-gray-500 uppercase ml-1">Type</label>
-                       <div className="flex gap-2">
-                         <button
-                           type="button"
-                           onClick={() => setFormData({...formData, txType: 'income'})}
-                           className={`flex-1 py-3 rounded-xl font-bold border ${formData.txType === 'income' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}
-                         >
-                           Income
-                         </button>
-                         <button
-                           type="button"
-                           onClick={() => setFormData({...formData, txType: 'expense'})}
-                           className={`flex-1 py-3 rounded-xl font-bold border ${formData.txType === 'expense' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}
-                         >
-                           Expense
-                         </button>
+               {(!isPremium && transactions.length >= transactionLimit && !editingTx) ? (
+                  <div className="flex flex-col items-center text-center p-6 bg-red-50/50 rounded-3xl border border-red-100 mt-2">
+                     <AlertTriangle className="text-red-500 mb-3 animate-pulse" size={40} />
+                     <h3 className="font-bold text-gray-900 text-lg">Transaction Limit Reached</h3>
+                     <p className="text-sm text-gray-500 mt-2 max-w-sm leading-relaxed">
+                        You have logged {transactions.length}/{transactionLimit} free SME transactions for this business. Financed by rewarded ads, watch a short video to unlock more entries!
+                     </p>
+                     
+                     <div className="flex flex-col gap-3 w-full mt-6">
+                        <button
+                          type="button"
+                          onClick={handleWatchAd}
+                          disabled={adLoading}
+                          className="bg-brand-600 text-white font-bold py-3.5 rounded-2xl w-full flex items-center justify-center gap-2 hover:bg-brand-700 active:scale-95 transition-all shadow-md active:bg-brand-800 disabled:opacity-50"
+                        >
+                           <Play size={14} fill="white" />
+                           {adLoading ? 'Activating Video...' : 'Watch Video Ad (+15 Free Entries)'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => { setShowModal(false); navigate('/profile'); }}
+                          className="bg-amber-500 text-white font-bold py-3.5 rounded-2xl w-full flex items-center justify-center gap-2 hover:bg-amber-600 active:scale-95 transition-all shadow-md active:bg-amber-700"
+                        >
+                           <Sparkles size={14} />
+                           Go Unlimited with Premium
+                        </button>
+                     </div>
+                  </div>
+               ) : (
+                  <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                     {type === 'all' && (
+                       <div className="flex flex-col gap-1.5">
+                          <label className="text-xs font-bold text-gray-500 uppercase ml-1">Type</label>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setFormData({...formData, txType: 'income'})}
+                              className={`flex-1 py-3 rounded-xl font-bold border ${formData.txType === 'income' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}
+                            >
+                              Income
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFormData({...formData, txType: 'expense'})}
+                              className={`flex-1 py-3 rounded-xl font-bold border ${formData.txType === 'expense' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}
+                            >
+                              Expense
+                            </button>
+                          </div>
                        </div>
-                    </div>
-                  )}
+                     )}
 
-                  <div className="flex flex-col gap-1.5">
-                     <label className="text-xs font-bold text-gray-500 uppercase ml-1">Amount</label>
-                     <input 
-                       required
-                       type="number"
-                       value={formData.amount}
-                       onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                       className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 font-bold text-lg focus:ring-2 focus:ring-brand-500 transition-all"
-                       placeholder="0.00"
-                     />
-                  </div>
-                  
-                  <div className="flex flex-col gap-1.5">
-                     <label className="text-xs font-bold text-gray-500 uppercase ml-1">Category</label>
-                     <input 
-                       required
-                       value={formData.category}
-                       onChange={(e) => setFormData({...formData, category: e.target.value})}
-                       className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 focus:ring-2 focus:ring-brand-500 transition-all"
-                       placeholder="e.g. Raw Materials, Rent, Consulting"
-                     />
-                  </div>
+                     <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase ml-1">Amount</label>
+                        <input 
+                          required
+                          type="number"
+                          value={formData.amount}
+                          onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                          className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 font-bold text-lg focus:ring-2 focus:ring-brand-500 transition-all"
+                          placeholder="0.00"
+                        />
+                     </div>
+                     
+                     <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase ml-1">Category</label>
+                        <input 
+                          required
+                          value={formData.category}
+                          onChange={(e) => setFormData({...formData, category: e.target.value})}
+                          className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 focus:ring-2 focus:ring-brand-500 transition-all"
+                          placeholder="e.g. Raw Materials, Rent, Consulting"
+                        />
+                     </div>
 
-                  <div className="flex flex-col gap-1.5">
-                     <label className="text-xs font-bold text-gray-500 uppercase ml-1">Date</label>
-                     <input 
-                       required
-                       type="date"
-                       value={formData.date}
-                       onChange={(e) => setFormData({...formData, date: e.target.value})}
-                       className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 focus:ring-2 focus:ring-brand-500 transition-all"
-                     />
-                  </div>
+                     <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase ml-1">Date</label>
+                        <input 
+                          required
+                          type="date"
+                          value={formData.date}
+                          onChange={(e) => setFormData({...formData, date: e.target.value})}
+                          className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 focus:ring-2 focus:ring-brand-500 transition-all"
+                        />
+                     </div>
 
-                  <div className="flex flex-col gap-1.5">
-                     <label className="text-xs font-bold text-gray-500 uppercase ml-1">Note (Optional)</label>
-                     <input 
-                       value={formData.note}
-                       onChange={(e) => setFormData({...formData, note: e.target.value})}
-                       className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 focus:ring-2 focus:ring-brand-500 transition-all"
-                       placeholder="Details..."
-                     />
-                  </div>
+                     <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase ml-1">Note (Optional)</label>
+                        <input 
+                          value={formData.note}
+                          onChange={(e) => setFormData({...formData, note: e.target.value})}
+                          className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 focus:ring-2 focus:ring-brand-500 transition-all"
+                          placeholder="Details..."
+                        />
+                     </div>
 
-                  <button 
-                    type="submit" 
-                    disabled={isSubmitting}
-                    className={`mt-4 ${(formData.txType || type) === 'income' ? 'bg-green-600' : 'bg-red-500'} text-white font-bold py-4 rounded-2xl w-full active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2`}
-                  >
-                    {isSubmitting ? 'Saving...' : editingTx ? 'Update Record' : `Add ${type === 'all' ? (formData.txType === 'income' ? 'Income' : 'Expense') : type}`}
-                  </button>
-               </form>
+                     <button 
+                       type="submit" 
+                       disabled={isSubmitting}
+                       className={`mt-4 ${(formData.txType || type) === 'income' ? 'bg-green-600' : 'bg-red-500'} text-white font-bold py-4 rounded-2xl w-full active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2`}
+                     >
+                       {isSubmitting 
+                           ? 'Saving...' 
+                           : editingTx 
+                              ? 'Update Record' 
+                              : `Add ${type === 'all' ? (formData.txType === 'income' ? 'Income' : 'Expense') : type as string}`}
+                     </button>
+                  </form>
+               )}
             </motion.div>
           </>
         )}

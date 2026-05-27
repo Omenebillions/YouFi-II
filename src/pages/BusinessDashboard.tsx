@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Building2, TrendingUp, TrendingDown, 
   Package, ShoppingCart, ArrowRightLeft, Plus, 
-  MoreVertical, PieChart, CreditCard, AlertCircle, Activity
+  MoreVertical, PieChart, CreditCard, AlertCircle, Activity, CalendarDays
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -23,6 +23,7 @@ export default function BusinessDashboard() {
   const [bTxs, setBTxs] = useState<any[]>([]);
   const [bSales, setBSales] = useState<any[]>([]);
   const [bDebts, setBDebts] = useState<any[]>([]);
+  const [bUpcomingPayments, setBUpcomingPayments] = useState<any[]>([]);
   const [productsCount, setProductsCount] = useState(0);
   
   const [loading, setLoading] = useState(true);
@@ -37,13 +38,14 @@ export default function BusinessDashboard() {
     setLoading(true);
 
     const fetchData = async () => {
-      const [bizRes, txRes, prodRes, salesRes, debtRes, recentRes] = await Promise.all([
+      const [bizRes, txRes, prodRes, salesRes, debtRes, recentRes, upcomingRes] = await Promise.all([
         supabase.from('businesses').select('*').eq('id', businessId).single(),
         supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id),
         supabase.from('products').select('*', { count: 'exact', head: true }).eq('business_id', businessId).eq('user_id', user.id),
         supabase.from('sales').select('*').eq('business_id', businessId).eq('user_id', user.id),
         supabase.from('business_debts').select('*').eq('business_id', businessId).eq('user_id', user.id).eq('status', 'unpaid'),
-        supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id).order('date', { ascending: false }).limit(5)
+        supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id).order('date', { ascending: false }).limit(5),
+        supabase.from('upcoming_payments').select('*').eq('user_id', user.id)
       ]);
 
       if (bizRes.data) {
@@ -68,6 +70,10 @@ export default function BusinessDashboard() {
       if (prodRes.count !== null) setProductsCount(prodRes.count);
       if (salesRes.data) setBSales(salesRes.data);
       if (debtRes.data) setBDebts(debtRes.data);
+      if (upcomingRes && upcomingRes.data) {
+        const bizUpcoming = upcomingRes.data.filter(p => p.business_id === businessId || (p.title && p.title.startsWith(`[Biz:${businessId}]`)));
+        setBUpcomingPayments(bizUpcoming);
+      }
       if (recentRes.data) {
         setRecentTransactions(recentRes.data.map((row: any) => {
           const meta = parseBusinessTxCategory(row.category);
@@ -100,16 +106,18 @@ export default function BusinessDashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales', filter: `business_id=eq.${businessId}` }, () => refreshData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `business_id=eq.${businessId}` }, () => refreshData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'business_debts', filter: `business_id=eq.${businessId}` }, () => refreshData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'upcoming_payments', filter: `user_id=eq.${user.id}` }, () => refreshData())
       .subscribe();
 
     const refreshData = async () => {
-      const [bizRes, txRes, prodRes, salesRes, debtRes, recentRes] = await Promise.all([
+      const [bizRes, txRes, prodRes, salesRes, debtRes, recentRes, upcomingRes] = await Promise.all([
         supabase.from('businesses').select('*').eq('id', businessId).single(),
         supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id),
         supabase.from('products').select('*', { count: 'exact', head: true }).eq('business_id', businessId).eq('user_id', user.id),
         supabase.from('sales').select('*').eq('business_id', businessId).eq('user_id', user.id),
         supabase.from('business_debts').select('*').eq('business_id', businessId).eq('user_id', user.id).eq('status', 'unpaid'),
-        supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id).order('date', { ascending: false }).limit(5)
+        supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id).order('date', { ascending: false }).limit(5),
+        supabase.from('upcoming_payments').select('*').eq('user_id', user.id)
       ]);
       if (bizRes.data) {
         const meta = parseBusinessName(bizRes.data.name);
@@ -133,6 +141,10 @@ export default function BusinessDashboard() {
       if (prodRes.count !== null) setProductsCount(prodRes.count);
       if (salesRes.data) setBSales(salesRes.data);
       if (debtRes.data) setBDebts(debtRes.data);
+      if (upcomingRes && upcomingRes.data) {
+        const bizUpcoming = upcomingRes.data.filter(p => p.business_id === businessId || (p.title && p.title.startsWith(`[Biz:${businessId}]`)));
+        setBUpcomingPayments(bizUpcoming);
+      }
       if (recentRes.data) {
         setRecentTransactions(recentRes.data.map((row: any) => {
           const meta = parseBusinessTxCategory(row.category);
@@ -422,36 +434,42 @@ export default function BusinessDashboard() {
       </div>
 
       {/* SME Tools Section */}
-      <div className="grid grid-cols-5 gap-2 mb-8">
+      <div className="grid grid-cols-3 gap-3 mb-8">
          <div onClick={() => navigate(`/business/${businessId}/sales`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
             <div className="w-8 h-8 bg-green-50 rounded-xl flex items-center justify-center text-green-600 mx-auto mb-2">
                <ShoppingCart size={16} />
             </div>
-            <p className="text-[8px] font-bold text-gray-400 uppercase">Sales</p>
+            <p className="text-[10px] font-bold text-gray-500 uppercase">Sales</p>
          </div>
          <div onClick={() => navigate(`/business/${businessId}/products`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
             <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 mx-auto mb-2">
                <Package size={16} />
             </div>
-            <p className="text-[8px] font-bold text-gray-400 uppercase">Product & Services</p>
+            <p className="text-[10px] font-bold text-gray-500 uppercase">Products</p>
          </div>
          <div onClick={() => navigate(`/business/${businessId}/transactions/income`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
             <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 mx-auto mb-2">
                <TrendingUp size={16} />
             </div>
-            <p className="text-[8px] font-bold text-gray-400 uppercase">Income</p>
+            <p className="text-[10px] font-bold text-gray-500 uppercase">Income</p>
          </div>
          <div onClick={() => navigate(`/business/${businessId}/transactions/expense`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
             <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center text-red-500 mx-auto mb-2">
                <TrendingDown size={16} />
             </div>
-            <p className="text-[8px] font-bold text-gray-400 uppercase">Expenses</p>
+            <p className="text-[10px] font-bold text-gray-500 uppercase">Expenses</p>
          </div>
          <div onClick={() => navigate(`/business/${businessId}/debts`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
             <div className="w-8 h-8 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600 mx-auto mb-2">
                <CreditCard size={16} />
             </div>
-            <p className="text-[8px] font-bold text-gray-400 uppercase">Debts</p>
+            <p className="text-[10px] font-bold text-gray-500 uppercase">Debts</p>
+         </div>
+         <div onClick={() => navigate(`/business/${businessId}/upcoming-payments`)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
+            <div className="w-8 h-8 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600 mx-auto mb-2">
+               <CalendarDays size={16} />
+            </div>
+            <p className="text-[10px] font-bold text-gray-500 uppercase">Upcoming Payments</p>
          </div>
       </div>
 
@@ -519,6 +537,66 @@ export default function BusinessDashboard() {
                </ResponsiveContainer>
             </div>
          </div>
+      )}
+
+      {/* Upcoming Payments Widget */}
+      {bUpcomingPayments.length > 0 && (
+          <div 
+             onClick={() => navigate(`/business/${businessId}/upcoming-payments`)}
+             className="bg-amber-50 border border-amber-100 p-6 rounded-[32px] mb-8 cursor-pointer active:scale-[0.98] transition-transform relative overflow-hidden"
+          >
+             <div className="flex items-center justify-between mb-4 relative z-10">
+                 <div className="flex items-center gap-3">
+                     <div className="w-10 h-10 bg-amber-200/50 rounded-xl flex items-center justify-center text-amber-700">
+                         <CalendarDays size={20} />
+                     </div>
+                     <div>
+                         <h3 className="font-bold text-gray-900">Upcoming Payments</h3>
+                         <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{bUpcomingPayments.length} Bills Due</p>
+                     </div>
+                 </div>
+                 <div className="text-right">
+                     <p className="text-xs font-bold text-gray-500">Total Due</p>
+                     <p className="text-sm font-black text-gray-900">{formatCurrency(bUpcomingPayments.reduce((acc, p) => acc + p.amount, 0))}</p>
+                 </div>
+             </div>
+             
+             <div className="flex flex-col gap-2 relative z-10">
+                 {(() => {
+                     const now = new Date();
+                     const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                     const tmrwStr = new Date(now.getTime() + 86400000 - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                     
+                     // Sort by closeness
+                     const sorted = [...bUpcomingPayments].sort((a,b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime()).slice(0, 3);
+                     
+                     return sorted.map((p, idx) => {
+                         const dateStr = p.due_date;
+                         let dayLabel = '';
+                         if (dateStr === todayStr) dayLabel = 'Today';
+                         else if (dateStr === tmrwStr) dayLabel = 'Tomorrow';
+                         else dayLabel = new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                         
+                         const displayTitle = p.title.replace(/^\[Biz:.*?\]\s*/, '');
+                         
+                         const isPastDue = new Date(dateStr) < new Date(todayStr);
+
+                         return (
+                             <div key={idx} className="flex justify-between items-center text-xs bg-white/60 p-2.5 rounded-xl">
+                                 <span className="font-bold text-gray-700 flex items-center gap-2 flex-1 min-w-0 pr-2">
+                                     <span className={`w-1.5 h-1.5 rounded-full ${isPastDue ? 'bg-red-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                     <span className="truncate">{displayTitle}</span>
+                                 </span>
+                                 <div className="flex items-center gap-3 flex-shrink-0">
+                                     <span className={`font-black ${isPastDue ? 'text-red-500' : 'text-gray-400 uppercase tracking-wider text-[9px]'}`}>{isPastDue ? 'Past Due' : dayLabel}</span>
+                                     <p className="text-xs font-black text-gray-900">{formatCurrency(p.amount)}</p>
+                                 </div>
+                             </div>
+                         );
+                     });
+                 })()}
+             </div>
+          </div>
       )}
 
       {/* Recent Activity */}

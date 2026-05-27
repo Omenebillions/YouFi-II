@@ -38,10 +38,14 @@ export interface YouFINativeBridge {
   
   // Receipt Scanning
   scanReceipt(): Promise<{ amount: number; merchant: string; date: string } | null>;
+  scanProductImage(): Promise<{ name: string; price?: number; details?: string } | null>;
   
   // Premium
   getPremiumStatus(): Promise<boolean>;
   purchasePremium(planId: 'monthly' | 'yearly' | 'business'): Promise<boolean>;
+  
+  // Rewarded Ads (Free tier only)
+  showRewardedAd(): Promise<{ reward: number }>;
   
   // Utility
   log(message: string): void;
@@ -58,28 +62,14 @@ const createWebFallbackBridge = (): YouFINativeBridge => {
   const getMockNotifications = (): any[] => {
     try {
       const stored = localStorage.getItem('youfi_web_notifications');
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const list = JSON.parse(stored);
+        return Array.isArray(list) ? list.filter((n: any) => n && n.id && !n.id.startsWith('mock-')) : [];
+      }
     } catch (e) {}
     
-    // Default mock notifications if none exist
-    const defaults = [
-      {
-        id: 'mock-1',
-        title: 'Welcome to YouFI Native!',
-        body: 'You are now running on our native-enhanced interface. Check out premium features like receipt scanning and calendar sync!',
-        receivedAt: new Date(Date.now() - 3600000).toISOString(),
-        read: false,
-      },
-      {
-        id: 'mock-2',
-        title: 'Weekly Financial Tip',
-        body: 'Review your upcoming payments to avoid any late fees. Creating a budget helps reduce unnecessary expenses.',
-        receivedAt: new Date(Date.now() - 86400000).toISOString(),
-        read: true,
-      }
-    ];
-    localStorage.setItem('youfi_web_notifications', JSON.stringify(defaults));
-    return defaults;
+    localStorage.setItem('youfi_web_notifications', JSON.stringify([]));
+    return [];
   };
 
   const saveMockNotifications = (notifications: any[]) => {
@@ -87,32 +77,6 @@ const createWebFallbackBridge = (): YouFINativeBridge => {
   };
 
   const listeners: Array<(notification: any) => void> = [];
-
-  // Periodically mock receiving a new notification (for demo in browser)
-  if (typeof window !== 'undefined') {
-    setTimeout(() => {
-      const isPremium = localStorage.getItem('youfi_premium') === 'true';
-      const notification = {
-        id: 'mock-dynamic-' + Date.now(),
-        title: isPremium ? 'Premium Reward Alert 🌟' : 'Upcoming Bill Alert ⏰',
-        body: isPremium ? 'We analyzed your receipts. Your savings are up 12% this month!' : 'You have a payment due today. Use Calendar Sync to stay updated!',
-        receivedAt: new Date().toISOString(),
-        read: false,
-      };
-      
-      const current = getMockNotifications();
-      current.unshift(notification);
-      saveMockNotifications(current);
-      
-      listeners.forEach(cb => {
-        try {
-          cb(notification);
-        } catch (e) {
-          console.error('[WebBridge Error] trigger listener:', e);
-        }
-      });
-    }, 15000);
-  }
 
   return {
     isNativeSupported: false,
@@ -187,6 +151,19 @@ const createWebFallbackBridge = (): YouFINativeBridge => {
       }
       return null;
     },
+
+    async scanProductImage() {
+      console.log('[WebBridge] Simulating Product Camera OCR...');
+      const simulateSuccess = window.confirm('Configure Web Sandbox: Simulate successful optical character recognition of a product?\n\nClick OK to simulate identifying "Premium Steel Flask" with price $24.99.');
+      if (simulateSuccess) {
+        return {
+          name: 'Premium Steel Flask',
+          price: 24.99,
+          details: '1L insulated flask'
+        };
+      }
+      return null;
+    },
     
     async getPremiumStatus() {
       return localStorage.getItem('youfi_premium') === 'true';
@@ -196,6 +173,15 @@ const createWebFallbackBridge = (): YouFINativeBridge => {
       console.log(`[WebBridge] Processing premium purchase: ${planId}`);
       localStorage.setItem('youfi_premium', 'true');
       return true;
+    },
+    
+    async showRewardedAd() {
+      console.log(`[WebBridge] Showing rewarded ad...`);
+      const watchSuccess = window.confirm('Configure Web Sandbox: Watch mock rewarded video ad to earn +15 transactions?');
+      if (watchSuccess) {
+        return { reward: 15 };
+      }
+      return { reward: 0 };
     },
     
     log(message) {

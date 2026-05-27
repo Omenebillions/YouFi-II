@@ -54,8 +54,9 @@ export default function Dashboard() {
       }));
     }
     if (upcomingRes.data) {
-      setUpcomingPayments(upcomingRes.data);
-      checkUpcomingPaymentNotifications(upcomingRes.data);
+      const personal = upcomingRes.data.filter(p => !p.business_id && !(p.title && p.title.startsWith('[Biz:')));
+      setUpcomingPayments(personal);
+      checkUpcomingPaymentNotifications(personal);
     }
     setLoading(false);
   };
@@ -100,8 +101,9 @@ export default function Dashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: tables.upcomingPayments, filter: `user_id=eq.${user.id}` }, () => {
         supabase.from(tables.upcomingPayments).select('*').eq('user_id', user.id).then(({ data }) => {
           if (data) {
-            setUpcomingPayments(data);
-            checkUpcomingPaymentNotifications(data);
+            const personal = data.filter(p => !p.business_id && !(p.title && p.title.startsWith('[Biz:')));
+            setUpcomingPayments(personal);
+            checkUpcomingPaymentNotifications(personal);
           }
         });
       })
@@ -345,12 +347,12 @@ export default function Dashboard() {
                          else if (isThisYear(date)) timeLabel = 'This Year';
                          
                          return (
-                             <div key={idx} className="flex items-center justify-between bg-white rounded-2xl p-3 shadow-sm border border-gray-50">
-                                 <div className="flex items-center gap-3">
+                             <div key={idx} className="flex items-center justify-between bg-white rounded-2xl p-3 shadow-sm border border-gray-50 gap-2">
+                                 <div className="flex items-center gap-3 flex-1 min-w-0">
                                      <div className={`w-2 h-2 rounded-full ${p.due_date <= todayStr ? 'bg-red-500' : 'bg-brand-400'}`}></div>
-                                     <p className="text-xs font-bold text-gray-800">{p.title}</p>
+                                     <p className="text-xs font-bold text-gray-800 truncate">{p.title}</p>
                                  </div>
-                                 <div className="text-right">
+                                 <div className="text-right flex-shrink-0">
                                      <p className="text-xs font-black text-gray-900">{formatCurrency(p.amount, currencyCode)}</p>
                                      <p className={`text-[10px] font-bold ${p.due_date <= todayStr ? 'text-red-500' : 'text-gray-400'}`}>{timeLabel}</p>
                                  </div>
