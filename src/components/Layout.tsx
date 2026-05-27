@@ -94,13 +94,13 @@ export default function Layout() {
       {/* Global Hamburger Menu Button */}
       <button 
          onClick={() => setDrawerOpen((prev) => !prev)}
-         className={`fixed top-6 right-6 z-[60] w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-90 ${
+         className={`fixed top-2 right-2 z-[60] w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 ${
            drawerOpen 
              ? 'bg-gray-50 text-gray-500 hover:bg-gray-100' 
              : 'bg-white border border-gray-100 text-gray-700 shadow-lg hover:bg-gray-50'
          }`}
       >
-        {drawerOpen ? <X size={24} /> : <Menu size={24} />}
+        {drawerOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
 
       {/* Global Drawer */}
@@ -138,9 +138,9 @@ export default function Layout() {
                     <Building2 size={20} className="text-gray-500" />
                     <span>Dashboard</span>
                  </Link>
-                 <Link to={`/business/${businessId}/sales`} className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
-                    <ShoppingCart size={20} className="text-gray-500" />
-                    <span>Sales Record</span>
+                 <Link to={`/business/${businessId}/goals`} className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
+                    <Target size={20} className="text-gray-500" />
+                    <span>Goals & Strategy</span>
                  </Link>
                  <Link to={`/business/${businessId}/transactions/income`} className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
                     <TrendingUp size={20} className="text-green-500" />
@@ -157,6 +157,10 @@ export default function Layout() {
                  <Link to={`/business/${businessId}/products`} className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
                     <Package size={20} className="text-gray-500" />
                     <span>Inventory</span>
+                 </Link>
+                 <Link to={`/business/${businessId}/upcoming-payments`} className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
+                    <Calendar size={20} className="text-amber-600" />
+                    <span>Upcoming Payments</span>
                  </Link>
                  <Link to={`/business/${businessId}/coach`} className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
                     <MessageCircle size={20} className="text-brand-600" />
@@ -270,8 +274,8 @@ export default function Layout() {
       )}
       
       {/* Personal Bottom Nav Wrapper */}
-      {!isBusinessPage ? (
-        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-30 shadow-xl">
+      {!isBusinessPage && !location.pathname.includes('/coach') ? (
+        <nav className="fixed bottom-2 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-30 shadow-xl">
           <NavItem to="/" icon={<Home size={22} />} isActive={location.pathname === '/'} />
           <NavItem to="/goals" icon={<Target size={22} />} isActive={location.pathname === '/goals'} />
           
@@ -284,11 +288,11 @@ export default function Layout() {
           <NavItem to="/history/all" icon={<Repeat size={22} />} isActive={location.pathname === '/history/all'} />
           <NavItem to="/coach" icon={<MessageCircle size={22} />} isActive={location.pathname === '/coach'} />
         </nav>
-      ) : businessId && activeBusiness ? (
+      ) : businessId && activeBusiness && !location.pathname.includes('/coach') ? (
         <>
           {showBusinessAddMenu && (
             <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-30" onClick={() => setShowBusinessAddMenu(false)}>
-              <div className="absolute bottom-28 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white rounded-3xl p-4 shadow-xl border border-gray-100 transform transition-all flex flex-col gap-2">
+              <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white rounded-3xl p-4 shadow-xl border border-gray-100 transform transition-all flex flex-col gap-2">
                  <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/sales?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
                     <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
                        <ShoppingCart size={20} />
@@ -316,9 +320,9 @@ export default function Layout() {
               </div>
             </div>
           )}
-          <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-40 shadow-xl">
+          <nav className="fixed bottom-2 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-40 shadow-xl">
             <NavItem to={`/business/${businessId}`} icon={<Home size={22} />} isActive={location.pathname === `/business/${businessId}`} />
-            <NavItem to={`/business/${businessId}/sales`} icon={<ShoppingCart size={22} />} isActive={location.pathname.includes('/sales')} />
+            <NavItem to={`/business/${businessId}/goals`} icon={<Target size={22} />} isActive={location.pathname.includes('/goals')} />
             
             <div className="relative -top-8 flex-shrink-0">
               <button onClick={() => setShowBusinessAddMenu(!showBusinessAddMenu)} className={`flex items-center justify-center w-14 h-14 bg-gray-900 rounded-full text-white shadow-[0_8px_20px_-6px_rgba(17,24,39,0.6)] transform transition-transform active:scale-95 ${showBusinessAddMenu ? 'rotate-45' : ''}`}>

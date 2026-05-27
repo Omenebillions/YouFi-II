@@ -53,22 +53,44 @@ export default function UpcomingPayments() {
     
     setLoading(true);
     
-    const fetchPayments = async () => {
-      const { data } = await supabase.from('upcoming_payments')
+    const fetchPayments = async (isColSupported: boolean) => {
+      let query = supabase.from('upcoming_payments')
         .select('*')
         .eq('user_id', user.id)
         .order('due_date', { ascending: true });
-      if (data) setPayments(data);
+        
+      if (isColSupported) {
+        query = query.is('business_id', null);
+      }
+        
+      const { data } = await query;
+      if (data) {
+        // Fallback filter for systems without the column but with string prefixes
+        const filtered = data.filter((p: any) => !(p.title && p.title.startsWith('[Biz:')));
+        setPayments(filtered);
+      }
       setLoading(false);
     };
 
-    fetchPayments();
+    const checkColumnSupport = async () => {
+      try {
+        const { error } = await supabase.from('upcoming_payments').select('business_id').limit(1);
+        if (error) {
+          return false;
+        }
+        return true;
+      } catch (err) {
+        return false;
+      }
+    };
+
+    checkColumnSupport().then(supported => {
+      fetchPayments(supported);
+    });
 
     const channel = supabase.channel('upcoming-payments')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'upcoming_payments', filter: `user_id=eq.${user.id}` }, () => {
-        supabase.from('upcoming_payments').select('*').eq('user_id', user.id).order('due_date', { ascending: true }).then(({ data }) => {
-          if (data) setPayments(data);
-        });
+        checkColumnSupport().then(supported => fetchPayments(supported));
       })
       .subscribe();
     
@@ -275,31 +297,34 @@ export default function UpcomingPayments() {
                    <h3 className="text-xs font-bold text-brand-600 uppercase tracking-widest mb-3 ml-2">{month}</h3>
                    <div className="bg-white rounded-[24px] shadow-sm border border-gray-100 overflow-hidden">
                        {items.map((payment, idx) => (
-                           <div key={payment.id} className={`p-4 flex items-center justify-between ${idx !== items.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                               <div className="flex items-center gap-3">
-                                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${new Date(payment.due_date) < new Date() ? 'bg-red-50 text-red-600' : 'bg-brand-50 text-brand-600'}`}>
+                           <div key={payment.id} className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${idx !== items.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                               <div className="flex items-start gap-3 flex-1 min-w-0">
+                                   <div className={`w-12 h-12 flex-shrink-0 rounded-2xl flex items-center justify-center ${new Date(payment.due_date) < new Date() ? 'bg-red-50 text-red-600' : 'bg-brand-50 text-brand-600'}`}>
                                        {payment.is_recurring ? <RotateCw size={20} /> : <Calendar size={20} />}
                                    </div>
-                                   <div>
-                                       <h4 className="font-bold text-gray-900">{payment.title}</h4>
+                                   <div className="flex-1 min-w-0">
+                                       <div className="flex items-start justify-between gap-2">
+                                           <h4 className="font-bold text-gray-900 truncate">{payment.title}</h4>
+                                           <p className="font-bold text-gray-900 text-[15px] whitespace-nowrap block sm:hidden">{formatCurrency(payment.amount, currencyCode)}</p>
+                                       </div>
                                        <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                                           <Clock size={12} /> {format(new Date(payment.due_date), 'MMM d, yyyy')}
+                                           <Clock size={12} /> <span className="truncate">{format(new Date(payment.due_date), 'MMM d, yyyy')}</span>
                                            {payment.is_recurring && <span className="ml-1 text-[10px] px-1.5 py-0.5 bg-gray-100 rounded uppercase">{payment.frequency}</span>}
                                        </p>
                                    </div>
                                </div>
-                               <div className="flex flex-col items-end">
-                                   <p className="font-bold text-gray-900">{formatCurrency(payment.amount, currencyCode)}</p>
-                                   <div className="flex items-center gap-2 mt-1">
-                                       <button onClick={() => { setPaymentToDelete(payment); setShowDeleteModal(true); }} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors">
-                                            <Trash2 size={14} />
+                               <div className="flex flex-row items-center justify-end sm:flex-col sm:items-end flex-shrink-0 sm:pl-2 w-full sm:w-auto mt-2 sm:mt-0">
+                                   <p className="font-bold text-gray-900 text-sm sm:text-base whitespace-nowrap hidden sm:block">{formatCurrency(payment.amount, currencyCode)}</p>
+                                   <div className="flex items-center gap-1 sm:gap-2 mt-0 sm:mt-2 w-full sm:w-auto justify-end">
+                                       <button onClick={() => { setPaymentToDelete(payment); setShowDeleteModal(true); }} className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors">
+                                            <Trash2 size={16} className="sm:w-3.5 sm:h-3.5" />
                                        </button>
-                                       <button onClick={() => handleEdit(payment)} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-brand-600 transition-colors">
-                                            <Edit2 size={14} />
+                                       <button onClick={() => handleEdit(payment)} className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center text-gray-400 hover:text-brand-600 transition-colors">
+                                            <Edit2 size={16} className="sm:w-3.5 sm:h-3.5" />
                                        </button>
-                                       <button onClick={() => handleMarkPaid(payment)} className="text-[10px] text-brand-600 font-bold uppercase tracking-wider bg-brand-50 px-2 py-1 rounded">Mark Paid</button>
-                                        <button type="button" onClick={() => handleSyncToCalendar(payment)} className="text-[10px] text-amber-600 font-bold uppercase tracking-wider bg-amber-50 px-2 py-1 rounded flex items-center gap-1">
-                                             <CalendarDays size={10} /> Sync
+                                       <button onClick={() => handleMarkPaid(payment)} className="text-xs sm:text-[10px] text-brand-600 font-bold uppercase tracking-wider bg-brand-50 px-3 py-2 sm:px-2 sm:py-1 rounded ml-1">Mark Paid</button>
+                                        <button type="button" onClick={() => handleSyncToCalendar(payment)} className="text-xs sm:text-[10px] text-amber-600 font-bold uppercase tracking-wider bg-amber-50 px-3 py-2 sm:px-2 sm:py-1 rounded flex items-center gap-1 ml-2 sm:ml-0">
+                                             <CalendarDays size={14} className="sm:w-2.5 sm:h-2.5" /> Sync
                                         </button>
                                    </div>
                                </div>

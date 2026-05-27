@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Sparkles, Check, ShieldAlert, CreditCard, X, Loader2 } from 'lucide-react';
 import { useNativeBridge } from '../hooks/useNativeBridge';
+import { useAuth } from '../contexts/AuthContext';
+import { formatCurrency } from '../lib/currency';
 
 interface UpgradePromptProps {
   isOpen: boolean;
@@ -11,11 +14,32 @@ interface UpgradePromptProps {
 
 export default function UpgradePrompt({ isOpen, onClose, featureName = "Premium Services", onSuccess }: UpgradePromptProps) {
   const { bridge, refreshPremiumStatus } = useNativeBridge();
+  const { userProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly' | 'business'>('yearly');
+  
+  const [exchangeRate, setExchangeRate] = useState<number>(1);
+  const currencyCode = userProfile?.currency || 'USD';
+
+  useEffect(() => {
+    if (isOpen && currencyCode !== 'USD') {
+      fetch('https://open.er-api.com/v6/latest/USD')
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.rates && data.rates[currencyCode]) {
+            setExchangeRate(data.rates[currencyCode]);
+          }
+        })
+        .catch(err => console.error("Error fetching exchange rate:", err));
+    }
+  }, [isOpen, currencyCode]);
 
   if (!isOpen) return null;
+
+  const getPrice = (usdPrice: number) => {
+    return formatCurrency(usdPrice * exchangeRate, currencyCode);
+  };
 
   const handleUpgrade = async () => {
     setLoading(true);
@@ -45,16 +69,16 @@ export default function UpgradePrompt({ isOpen, onClose, featureName = "Premium 
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  const modalContent = (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div 
-        className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-gray-100 flex flex-col relative animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-gray-100 flex flex-col relative animate-in fade-in zoom-in-95 duration-200 hide-scrollbar"
         id="upgrade-prompt-modal"
       >
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center hover:bg-gray-100 transition-colors"
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center hover:bg-gray-100 transition-colors z-[110]"
           disabled={loading}
           id="close-upgrade-btn"
         >
@@ -122,7 +146,7 @@ export default function UpgradePrompt({ isOpen, onClose, featureName = "Premium 
               }`}
             >
               <span className="block text-[10px] font-bold text-gray-400 uppercase">Monthly</span>
-              <span className="block text-sm font-bold text-gray-950 mt-1">$4.99</span>
+              <span className="block text-sm font-bold text-gray-950 mt-1">{getPrice(4.99)}</span>
             </button>
             <button
               onClick={() => setSelectedPlan('yearly')}
@@ -135,7 +159,7 @@ export default function UpgradePrompt({ isOpen, onClose, featureName = "Premium 
             >
               <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-widest leading-none">Best</span>
               <span className="block text-[10px] font-bold text-gray-400 uppercase">Yearly</span>
-              <span className="block text-sm font-bold text-gray-950 mt-1">$39.99</span>
+              <span className="block text-sm font-bold text-gray-950 mt-1">{getPrice(39.99)}</span>
             </button>
             <button
               onClick={() => setSelectedPlan('business')}
@@ -147,7 +171,7 @@ export default function UpgradePrompt({ isOpen, onClose, featureName = "Premium 
               }`}
             >
               <span className="block text-[10px] font-bold text-gray-400 uppercase">Business</span>
-              <span className="block text-sm font-bold text-gray-950 mt-1">$99.99</span>
+              <span className="block text-sm font-bold text-gray-950 mt-1">{getPrice(99.99)}</span>
             </button>
           </div>
 
@@ -173,4 +197,6 @@ export default function UpgradePrompt({ isOpen, onClose, featureName = "Premium 
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

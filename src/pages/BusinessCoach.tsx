@@ -142,7 +142,7 @@ Don't compete on price alone. Understand your value proposition. If you provide 
       </div>
       
       {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 pb-32">
+      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 pb-24">
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
              <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
@@ -171,7 +171,7 @@ Don't compete on price alone. Understand your value proposition. If you provide 
       </div>
       
       {/* Input */}
-      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 py-3 pb-32">
+      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 py-3 pb-6">
         <div className="flex items-center gap-2">
            <input 
              type="text" 

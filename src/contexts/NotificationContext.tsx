@@ -47,6 +47,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         const pad = (n: number) => n.toString().padStart(2, '0');
         const todayStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+        const getDaysDiff = (d1Str: string, d2Str: string): number => {
+          try {
+            const parts1 = d1Str.split('-');
+            const parts2 = d2Str.split('-');
+            if (parts1.length < 3 || parts2.length < 3) return 999;
+            const uDate1 = Date.UTC(parseInt(parts1[0]), parseInt(parts1[1]) - 1, parseInt(parts1[2]));
+            const uDate2 = Date.UTC(parseInt(parts2[0]), parseInt(parts2[1]) - 1, parseInt(parts2[2]));
+            return Math.round((uDate2 - uDate1) / (1000 * 3600 * 24));
+          } catch (err) {
+            return 999;
+          }
+        };
+
         // Fetch upcoming payments
         const { data: upcoming } = await supabase
           .from('upcoming_payments')
@@ -57,22 +70,35 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (upcoming) {
           for (const item of upcoming) {
             const dueDateStr = item.due_date;
+            if (!dueDateStr) continue;
             
-            // Calculate day difference ignoring time
-            const tDate = new Date(todayStr);
-            const dDate = new Date(dueDateStr);
-            const diffDays = Math.ceil((dDate.getTime() - tDate.getTime()) / (1000 * 3600 * 24));
+            // Calculate day difference ignoring time zones exactly
+            const diffDays = getDaysDiff(todayStr, dueDateStr);
 
             if (diffDays === 7 || diffDays === 1 || diffDays === 0 || diffDays < 0) {
               const isOverdue = diffDays < 0;
               let titlePrefix = diffDays === 0 ? 'Payment Due Today ⏰' : diffDays === 1 ? 'Payment Due Tomorrow ⏰' : diffDays === 7 ? 'Payment Due in 7 Days ⏰' : 'Overdue Payment ⚠️';
 
+              let displayTitle = item.title || '';
+              let bId: string | undefined = item.business_id || undefined;
+              
+              if (displayTitle.startsWith('[Biz:')) {
+                const match = displayTitle.match(/^\[Biz:([^\]]+)\]\s*(.*)$/);
+                if (match) {
+                  bId = match[1];
+                  displayTitle = match[2];
+                }
+              }
+
               dynamicNotifs.push({
                 id: `dynamic_payment_${item.id}`,
-                title: titlePrefix,
-                body: `Your payment of ${item.amount} for ${item.title} is ${isOverdue ? 'overdue' : 'due soon'}.`,
+                title: bId ? `Biz Bill: ${titlePrefix}` : titlePrefix,
+                body: bId 
+                  ? `Your business payment of ${item.amount} for ${displayTitle} is ${isOverdue ? 'overdue' : 'due soon'}.`
+                  : `Your payment of ${item.amount} for ${displayTitle} is ${isOverdue ? 'overdue' : 'due soon'}.`,
                 receivedAt: new Date().toISOString(),
                 read: false,
+                businessId: bId,
               });
             }
           }
@@ -88,10 +114,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (debts) {
           for (const item of debts) {
             const dueDateStr = item.due_date;
+            if (!dueDateStr) continue;
             
-            const tDate = new Date(todayStr);
-            const dDate = new Date(dueDateStr);
-            const diffDays = Math.ceil((dDate.getTime() - tDate.getTime()) / (1000 * 3600 * 24));
+            const diffDays = getDaysDiff(todayStr, dueDateStr);
 
             if (diffDays === 7 || diffDays === 1 || diffDays === 0 || diffDays < 0) {
               const isOverdue = diffDays < 0;

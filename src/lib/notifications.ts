@@ -44,18 +44,26 @@ export const triggerNotification = (payload: NotificationPayload) => {
 export const checkUpcomingPaymentNotifications = (payments: any[]) => {
   if (!payments || payments.length === 0) return;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const d = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const todayStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const getDaysDiff = (d1Str: string, d2Str: string): number => {
+    try {
+      const parts1 = d1Str.split('-');
+      const parts2 = d2Str.split('-');
+      if (parts1.length < 3 || parts2.length < 3) return 999;
+      const uDate1 = Date.UTC(parseInt(parts1[0]), parseInt(parts1[1]) - 1, parseInt(parts1[2]));
+      const uDate2 = Date.UTC(parseInt(parts2[0]), parseInt(parts2[1]) - 1, parseInt(parts2[2]));
+      return Math.round((uDate2 - uDate1) / (1000 * 3600 * 24));
+    } catch (err) {
+      return 999;
+    }
+  };
 
   payments.forEach(payment => {
-    const dueDate = new Date(payment.due_date);
-    dueDate.setHours(0, 0, 0, 0);
-
-    const timeDiff = dueDate.getTime() - today.getTime();
-    const daysAway = Math.round(timeDiff / (1000 * 3600 * 24));
+    if (!payment.due_date) return;
+    const daysAway = getDaysDiff(todayStr, payment.due_date);
 
     // A simple guard to prevent spamming notifications (in a real app, track sent IDs in localStorage)
     const storageKey = `notified_${payment.id}_${daysAway}`;

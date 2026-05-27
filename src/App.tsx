@@ -6,6 +6,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { PremiumProvider } from './contexts/PremiumContext';
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext';
 import { useNativeBridge } from './hooks/useNativeBridge';
 import { supabase } from './services/supabase';
@@ -26,7 +27,9 @@ import BusinessSaleList from './pages/BusinessSaleList';
 import BusinessTransactionList from './pages/BusinessTransactionList';
 import BusinessDebtList from './pages/BusinessDebtList';
 import BusinessCoach from './pages/BusinessCoach';
+import BusinessGoals from './pages/BusinessGoals';
 import UpcomingPayments from './pages/UpcomingPayments';
+import BusinessUpcomingPayments from './pages/BusinessUpcomingPayments';
 import TrashBin from './pages/TrashBin';
 
 import BusinessIdeas from './pages/BusinessIdeas';
@@ -90,36 +93,40 @@ function AppInitializer() {
 export default function App() {
   return (
     <AuthProvider>
-      <NotificationProvider>
-        <BrowserRouter>
-          <AppInitializer />
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            
-            <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
-              <Route index element={<Dashboard />} />
-              <Route path="add" element={<AddTransaction />} />
-              <Route path="auto-import" element={<AutoImport />} />
-              <Route path="coach" element={<Coach />} />
-              <Route path="insights" element={<Insights />} />
-              <Route path="goals" element={<Goals />} />
-              <Route path="profile" element={<Profile />} />
-              <Route path="history/:type" element={<HistoryPage />} />
-              <Route path="business" element={<BusinessList />} />
-              <Route path="business-ideas" element={<BusinessIdeas />} />
-              <Route path="business/:businessId" element={<BusinessDashboard />} />
-              <Route path="business/:businessId/products" element={<BusinessProductList />} />
-              <Route path="business/:businessId/sales" element={<BusinessSaleList />} />
-              <Route path="business/:businessId/transactions/:type" element={<BusinessTransactionList />} />
-              <Route path="business/:businessId/debts" element={<BusinessDebtList />} />
-              <Route path="business/:businessId/coach" element={<BusinessCoach />} />
-              <Route path="upcoming-payments" element={<UpcomingPayments />} />
-              <Route path="trash" element={<TrashBin />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </NotificationProvider>
+      <PremiumProvider>
+        <NotificationProvider>
+          <BrowserRouter>
+            <AppInitializer />
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              
+              <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
+                <Route index element={<Dashboard />} />
+                <Route path="add" element={<AddTransaction />} />
+                <Route path="auto-import" element={<AutoImport />} />
+                <Route path="coach" element={<Coach />} />
+                <Route path="insights" element={<Insights />} />
+                <Route path="goals" element={<Goals />} />
+                <Route path="profile" element={<Profile />} />
+                <Route path="history/:type" element={<HistoryPage />} />
+                <Route path="business" element={<BusinessList />} />
+                <Route path="business-ideas" element={<BusinessIdeas />} />
+                <Route path="business/:businessId" element={<BusinessDashboard />} />
+                <Route path="business/:businessId/products" element={<BusinessProductList />} />
+                <Route path="business/:businessId/sales" element={<BusinessSaleList />} />
+                <Route path="business/:businessId/goals" element={<BusinessGoals />} />
+                <Route path="business/:businessId/transactions/:type" element={<BusinessTransactionList />} />
+                <Route path="business/:businessId/debts" element={<BusinessDebtList />} />
+                <Route path="business/:businessId/upcoming-payments" element={<BusinessUpcomingPayments />} />
+                <Route path="business/:businessId/coach" element={<BusinessCoach />} />
+                <Route path="upcoming-payments" element={<UpcomingPayments />} />
+                <Route path="trash" element={<TrashBin />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </NotificationProvider>
+      </PremiumProvider>
     </AuthProvider>
   );
 }

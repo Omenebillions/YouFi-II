@@ -24,7 +24,8 @@ export default function Coach() {
           getGoals(user.id),
           getUpcomingPayments(user.id)
         ]);
-        setContextData({ txs, businesses, goals, upcoming });
+        const personalGoals = goals ? goals.filter((g: any) => !g.frequency?.startsWith('business:')) : [];
+        setContextData({ txs, businesses, goals: personalGoals, upcoming });
       } catch (e) {
         console.error("Failed to load context for AI", e);
       }
@@ -135,8 +136,7 @@ While I cannot generate real-time AI responses without an internet connection, h
            <p className="text-xs text-brand-600 font-medium">Full Financial Access • MBA Level</p>
         </div>
       </div>
-      
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6 pb-40">
+           <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6 pb-24">
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
              <div className={`max-w-[85%] rounded-2xl px-5 py-4 shadow-sm ${
@@ -158,9 +158,9 @@ While I cannot generate real-time AI responses without an internet connection, h
                    </div>
                 )}
                 {msg.role === 'model' ? (
-                  <div className="markdown-body text-sm prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-a:text-brand-600">
+                   <div className="markdown-body text-sm prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-a:text-brand-600">
                      <Markdown>{msg.text}</Markdown>
-                  </div>
+                   </div>
                 ) : (
                   <p className="text-sm font-medium">{msg.text}</p>
                 )}
@@ -181,7 +181,7 @@ While I cannot generate real-time AI responses without an internet connection, h
         <div ref={messagesEndRef} />
       </div>
       
-      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 pt-4 pb-28">
+      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 pt-4 pb-6">
         <div className="flex flex-col gap-2 relative max-w-2xl mx-auto">
            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-2xl p-2 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition-all shadow-sm">
               <input 

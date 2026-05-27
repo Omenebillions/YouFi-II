@@ -1,6 +1,6 @@
 {
   "name": "YouFi",
   "description": "Your personal AI financial co-pilot.",
-  "requestFramePermissions": ["microphone"],
-  "majorCapabilities": []
+  "requestFramePermissions": ["microphone", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
