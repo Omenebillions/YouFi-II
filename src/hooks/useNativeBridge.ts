@@ -57,6 +57,164 @@ const isWebView = () => {
   return (window as any).ReactNativeWebView !== undefined || navigator.userAgent.includes('wv') || (window as any).YouFI !== undefined;
 };
 
+// High-Fidelity React Native WebView Bridge
+const createWebViewBridge = (): YouFINativeBridge => {
+  return {
+    isNativeSupported: true,
+    get isPremium() {
+      return localStorage.getItem('youfi_premium') === 'true';
+    },
+    
+    async schedulePaymentNotifications(instances, title) {
+      console.log(`[WebViewBridge] Scheduling notifications for: ${title}`);
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'schedulePaymentNotifications',
+          instances,
+          title
+        }));
+      }
+      return instances.map(inst => ({
+        instanceId: inst.id,
+        notificationId: 'native-' + inst.id
+      }));
+    },
+    
+    async cancelNotification(instanceId) {
+      console.log(`[WebViewBridge] Cancelling notification: ${instanceId}`);
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'cancelNotification',
+          instanceId
+        }));
+      }
+    },
+    
+    async cancelAllNotifications() {
+      console.log('[WebViewBridge] Cancelling all notifications');
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'cancelAllNotifications'
+        }));
+      }
+    },
+    
+    async getPushToken() {
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'getPushToken'
+        }));
+      }
+      return localStorage.getItem('youfi_push_token') || 'fetching-native-token';
+    },
+    
+    async getNotifications() {
+      return [];
+    },
+    
+    async getUnreadCount() {
+      return 0;
+    },
+    
+    async markNotificationAsRead(notificationId) {
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'markNotificationAsRead',
+          notificationId
+        }));
+      }
+    },
+    
+    async markAllAsRead() {
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'markAllAsRead'
+        }));
+      }
+    },
+    
+    onNotificationReceived(callback) {
+      // Setup listener if needed
+    },
+    
+    async syncToCalendar(instances, title) {
+      console.log(`[WebViewBridge] Syncing to Calendar: ${title}`);
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'syncToCalendar',
+          instances,
+          title
+        }));
+      }
+      return true;
+    },
+    
+    async removeFromCalendar(instanceIds) {
+      console.log('[WebViewBridge] Removing from Calendar:', instanceIds);
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'removeFromCalendar',
+          instanceIds
+        }));
+      }
+    },
+    
+    async scanReceipt() {
+      console.log('[WebViewBridge] Triggering native scanReceipt');
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'scanReceipt'
+        }));
+      }
+      return null;
+    },
+    
+    async scanProductImage() {
+      console.log('[WebViewBridge] Triggering native scanProductImage');
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'scanProductImage'
+        }));
+      }
+      return null;
+    },
+    
+    async getPremiumStatus() {
+      return localStorage.getItem('youfi_premium') === 'true';
+    },
+    
+    async purchasePremium(planId) {
+      console.log(`[WebViewBridge] Requesting purchasePremium natively for: ${planId}`);
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'purchasePremium',
+          planId
+        }));
+      }
+      return true;
+    },
+    
+    async showRewardedAd() {
+      console.log('[WebViewBridge] Triggering native showRewardedAd');
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'showRewardedAd'
+        }));
+      }
+      return { reward: 0 };
+    },
+    
+    log(message) {
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'log',
+          message
+        }));
+      }
+    }
+  };
+};
+
 // Web Mock Implementation for developers testing on the web version
 const createWebFallbackBridge = (): YouFINativeBridge => {
   const getMockNotifications = (): any[] => {
@@ -190,17 +348,68 @@ const createWebFallbackBridge = (): YouFINativeBridge => {
   };
 };
 
+// Expose globally to guarantee window.YouFI is always accessible in code
+if (typeof window !== 'undefined' && !(window as any).YouFI) {
+  if (isWebView()) {
+    (window as any).YouFI = createWebViewBridge();
+  } else {
+    (window as any).YouFI = createWebFallbackBridge();
+  }
+}
+
 export function useNativeBridge() {
   const [isNative, setIsNative] = useState(isWebView());
   const [bridge, setBridge] = useState<YouFINativeBridge | null>(null);
   const [isPremium, setIsPremium] = useState(false);
 
   useEffect(() => {
+    // Expose dynamic updates so native can trigger reacts components instantly via injectJavaScript
+    (window as any).updateYouFIPremiumStatus = (status: boolean) => {
+      console.log('[NativeBridge] updateYouFIPremiumStatus called with:', status);
+      localStorage.setItem('youfi_premium', status ? 'true' : 'false');
+      setIsPremium(status);
+    };
+
+    const handlePremiumEvent = (e: Event & { detail?: { isPremium: boolean } }) => {
+      const status = e.detail?.isPremium;
+      if (status !== undefined) {
+        console.log('[NativeBridge] premiumStatusChanged event caught:', status);
+        localStorage.setItem('youfi_premium', status ? 'true' : 'false');
+        setIsPremium(status);
+      }
+    };
+
+    const handleMessageEvent = (event: MessageEvent) => {
+      try {
+        let parsed = event.data;
+        if (typeof parsed === 'string') {
+          parsed = JSON.parse(parsed);
+        }
+        if (parsed) {
+          if (parsed.type === 'premiumStatusChanged' || parsed.type === 'isPremium') {
+            const status = parsed.isPremium !== undefined ? parsed.isPremium : parsed.value;
+            console.log('[NativeBridge] Premium message event parsed:', status);
+            localStorage.setItem('youfi_premium', status ? 'true' : 'false');
+            setIsPremium(status);
+          }
+          if (parsed.type === 'pushToken') {
+            console.log('[NativeBridge] Received push token from native:', parsed.token);
+            localStorage.setItem('youfi_push_token', parsed.token);
+          }
+        }
+      } catch (err) {
+        // Safe fail
+      }
+    };
+
+    window.addEventListener('premiumStatusChanged', handlePremiumEvent as any);
+    window.addEventListener('message', handleMessageEvent);
+
     const handleDetection = () => {
       const nativeDetected = isWebView();
       setIsNative(nativeDetected);
       
-      const activeBridge = (window as any).YouFI || createWebFallbackBridge();
+      const activeBridge = (window as any).YouFI || (nativeDetected ? createWebViewBridge() : createWebFallbackBridge());
       setBridge(activeBridge);
       
       // Keep track of premium changes in local state for reactive views
@@ -217,7 +426,11 @@ export function useNativeBridge() {
     
     // Periodically re-check in case injection was slightly delayed
     const timer = setTimeout(handleDetection, 500);
-    return () => clearTimeout(timer);
+    return () => {
+      window.removeEventListener('premiumStatusChanged', handlePremiumEvent as any);
+      window.removeEventListener('message', handleMessageEvent);
+      clearTimeout(timer);
+    };
   }, []);
 
   const refreshPremiumStatus = async () => {
@@ -232,5 +445,5 @@ export function useNativeBridge() {
     return status;
   };
 
-  return { isNative, bridge: bridge || createWebFallbackBridge(), isPremium, refreshPremiumStatus };
+  return { isNative, bridge: bridge || ((window as any).YouFI) || createWebFallbackBridge(), isPremium, refreshPremiumStatus };
 }
