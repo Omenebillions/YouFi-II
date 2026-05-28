@@ -84,7 +84,7 @@ export default function Layout() {
       {isOffline && (
         <div className="w-full bg-orange-500 text-white text-xs font-bold py-1.5 flex justify-center items-center gap-2 z-50">
           <WifiOff size={14} />
-          <span>You are offline. Data is saved locally and will sync when you reconnect.</span>
+          <span> Data is saved locally and will sync when you reconnect.</span>
         </div>
       )}
       <main className={`flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 ${isBusinessPage ? 'pb-8' : 'pb-32'} pt-4 relative z-0 hide-scrollbar`}>
