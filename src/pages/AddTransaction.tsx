@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Wallet, Tag, Mic, MicOff, CreditCard, RotateCw } from 'lucide-react';
 import { addTransaction, fetchTransactions } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
+import { usePrivacy } from '../contexts/PrivacyContext';
 import { formatCurrency, CURRENCIES } from '../lib/currency';
 import { parsePersonalDebt, serializePersonalDebt, generateRecurringPayments, RecurringPaymentInstance } from '../lib/debt';
+import { sanitizeInput } from '../lib/security';
 
 export default function AddTransaction() {
   const navigate = useNavigate();
   const { user, userProfile } = useAuth();
+  const { isPrivacyMode } = usePrivacy();
   const [type, setType] = useState<'income' | 'expense' | 'debt'>('expense');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
@@ -117,6 +120,7 @@ export default function AddTransaction() {
     if (!amount || !category || loading) return;
     
     setLoading(true);
+    const sanitizedNote = sanitizeInput(note);
     const finalNote = type === 'debt' ? serializePersonalDebt({
       repaymentDate: repaymentDate || date,
       isRecurring,
@@ -125,13 +129,13 @@ export default function AddTransaction() {
       recurringAmount: isRecurring ? parseFloat(recurringAmount) : 0,
       payments: isRecurring ? payments : [],
       status: 'unpaid',
-      note: note
-    }) : note;
+      note: sanitizedNote
+    }) : sanitizedNote;
 
     await addTransaction({
       type,
       amount: parseFloat(amount),
-      category: category.toLowerCase(),
+      category: sanitizeInput(category).toLowerCase(),
       note: finalNote,
       date
     });
@@ -466,7 +470,7 @@ export default function AddTransaction() {
                       </div>
                   </div>
                   <div className={`text-sm font-bold ${tx.type === 'income' ? 'text-success-500' : 'text-danger-500'}`}>
-                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount), currencyCode)}
+                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount), currencyCode, isPrivacyMode)}
                   </div>
                 </div>
               )

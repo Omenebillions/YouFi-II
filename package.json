@@ -20,6 +20,7 @@
     "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
     "dexie": "^4.4.2",
+    "dompurify": "^3.4.7",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
@@ -38,6 +39,7 @@
   },
   "devDependencies": {
     "@types/crypto-js": "^4.2.2",
+    "@types/dompurify": "^3.0.5",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",

@@ -187,15 +187,15 @@ export default function HistoryPage() {
     loadData();
   };
 
-  const total = transactions.reduce((acc, t) => {
-    if (t.type === 'income') return acc + t.amount;
-    if (t.type === 'expense') return acc - t.amount;
-    if (t.type === 'debt') {
-      const isPaid = parsePersonalDebt(t).status === 'paid';
-      return isPaid ? acc : acc - t.amount;
-    }
-    return acc;
-  }, 0);
+  const baseBalance = (!type || type === 'all' || type === 'all_transactions') && !period ? (userProfile?.income || 0) : 0;
+
+  const totalMoneyIn = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0) + baseBalance;
+  const totalMoneyOut = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0) + 
+                        transactions.filter(t => t.type === 'debt' && parsePersonalDebt(t).status !== 'paid').reduce((acc, t) => acc + t.amount, 0);
+
+  const total = (!type || type === 'all' || type === 'all_transactions') 
+    ? totalMoneyIn - totalMoneyOut
+    : transactions.reduce((acc, t) => acc + t.amount, 0) + baseBalance;
 
   const titles: Record<string, string> = {
     income: 'Total Income',
@@ -219,7 +219,20 @@ export default function HistoryPage() {
 
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 flex flex-col items-center mb-8">
         <h2 className="text-gray-500 font-medium text-sm mb-2">{titles[type || ''] || 'Total'}</h2>
-        <div className="text-3xl font-bold text-gray-900">{formatCurrency(total, currencyCode)}</div>
+        <div className="text-3xl font-bold text-gray-900 mb-4">{formatCurrency(total, currencyCode)}</div>
+
+        {(!type || type === 'all' || type === 'all_transactions') && (
+          <div className="flex gap-4 w-full mt-2">
+            <div className="flex-1 bg-emerald-50 rounded-2xl p-4 flex flex-col items-center border border-emerald-100/50">
+              <span className="text-[10px] uppercase font-bold text-emerald-600 mb-1">Total Money In</span>
+              <span className="text-lg font-black text-emerald-700">{formatCurrency(totalMoneyIn, currencyCode)}</span>
+            </div>
+            <div className="flex-1 bg-red-50 rounded-2xl p-4 flex flex-col items-center border border-red-100/50">
+              <span className="text-[10px] uppercase font-bold text-red-600 mb-1">Total Money Out</span>
+              <span className="text-lg font-black text-red-700">{formatCurrency(totalMoneyOut, currencyCode)}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div>
@@ -435,8 +448,12 @@ export default function HistoryPage() {
                               {debtMeta?.status || 'unpaid'}
                             </span>
                           )}
-                          {debtMeta?.note && <span className="font-normal text-gray-500">- {debtMeta.note}</span>}
                         </h4>
+                        
+                        {isDebt ? 
+                          (debtMeta?.note && <p className="text-xs font-medium text-gray-500 mt-0.5">{debtMeta.note}</p>) : 
+                          (tx.note && <p className="text-xs font-medium text-gray-500 mt-0.5">{tx.note}</p>)
+                        }
                         <div className="flex flex-col gap-1 mt-1">
                           {tx.date && (() => {
                               const d = new Date(tx.date);

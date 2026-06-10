@@ -46,6 +46,7 @@ export interface YouFINativeBridge {
   
   // Rewarded Ads (Free tier only)
   showRewardedAd(): Promise<{ reward: number }>;
+  showInterstitialAd(): Promise<boolean>;
   
   // Utility
   log(message: string): void;
@@ -54,7 +55,7 @@ export interface YouFINativeBridge {
 // Check if running in a WebView on modern browsers/native
 const isWebView = () => {
   if (typeof window === 'undefined') return false;
-  return (window as any).ReactNativeWebView !== undefined || navigator.userAgent.includes('wv') || (window as any).YouFI !== undefined;
+  return (window as any).ReactNativeWebView !== undefined || navigator.userAgent.includes('wv');
 };
 
 // High-Fidelity React Native WebView Bridge
@@ -204,6 +205,16 @@ const createWebViewBridge = (): YouFINativeBridge => {
       return { reward: 0 };
     },
     
+    async showInterstitialAd() {
+      console.log('[WebViewBridge] Triggering native showInterstitialAd');
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'showInterstitialAd'
+        }));
+      }
+      return true;
+    },
+    
     log(message) {
       if ((window as any).ReactNativeWebView) {
         (window as any).ReactNativeWebView.postMessage(JSON.stringify({
@@ -340,6 +351,14 @@ const createWebFallbackBridge = (): YouFINativeBridge => {
         return { reward: 15 };
       }
       return { reward: 0 };
+    },
+
+    async showInterstitialAd() {
+      console.log(`[WebBridge] Showing interstitial ad...`);
+      if (window.confirm('Simulating Interstitial Ad. Did the user finish the ad?')) {
+        return true;
+      }
+      return false;
     },
     
     log(message) {

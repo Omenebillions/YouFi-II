@@ -6,6 +6,8 @@ import { tables } from '../services/db';
 import { Bell, ShoppingBag, HeartPulse, Wallet, ArrowDown, CreditCard, BarChart3, TrendingUp, ArrowRightLeft, Building2, TrendingDown, X } from 'lucide-react';
 import { isSameMonth, format, addDays, isThisWeek, isThisMonth, isThisYear } from 'date-fns';
 import { formatCurrency } from '../lib/currency';
+import { usePrivacy } from '../contexts/PrivacyContext';
+import { ModalTracker } from '../components/ModalTracker';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
     BarChart, Bar, XAxis, YAxis, 
@@ -20,6 +22,7 @@ import NotificationCenter from '../components/NotificationCenter';
 
 export default function Dashboard() {
   const { userProfile, user } = useAuth();
+  const { isPrivacyMode } = usePrivacy();
   const navigate = useNavigate();
   const [transactions, setTransactions] = useState<any[]>([]);
   const [businesses, setBusinesses] = useState<any[]>([]);
@@ -139,16 +142,21 @@ export default function Dashboard() {
     setTransferLoading(true);
     try {
       const targetBiz = businesses.find(b => b.id === transferData.businessId);
+      if (!targetBiz) {
+        setTransferLoading(false);
+        return;
+      }
       
       // Update business balance
-      await supabase.from(tables.businesses)
+      const { error: e1 } = await supabase.from(tables.businesses)
         .update({ balance: (targetBiz.balance || 0) + amount })
         .eq('id', transferData.businessId);
+      if (e1) throw e1;
 
       const category = transferData.transferType || 'Investment';
 
       // Add business transaction (income)
-      await supabase.from('business_transactions').insert({
+      const { error: e2 } = await supabase.from('business_transactions').insert({
         business_id: transferData.businessId,
         user_id: user.id,
         type: 'income',
@@ -156,10 +164,11 @@ export default function Dashboard() {
         category: serializeBusinessTxCategory(category, transferData.note || `Transfer from personal as ${category}`),
         date: new Date().toISOString().split('T')[0]
       });
+      if (e2) throw e2;
 
       // If it's a loan, also record it in business_debts
       if (category === 'Loan') {
-        await supabase.from('business_debts').insert({
+        const { error: e3 } = await supabase.from('business_debts').insert({
           amount,
           lender: 'Personal (Owner)',
           due_date: '',
@@ -167,10 +176,11 @@ export default function Dashboard() {
           business_id: transferData.businessId,
           user_id: user.id
         });
+        if (e3) throw e3;
       }
 
       // Add personal transaction (expense)
-      await supabase.from(tables.transactions).insert({
+      const { error: e4 } = await supabase.from(tables.transactions).insert({
         user_id: user.id,
         type: 'expense',
         amount,
@@ -178,23 +188,27 @@ export default function Dashboard() {
         note: `To ${targetBiz.name} (${category}): ${transferData.note}`,
         date: new Date().toISOString().split('T')[0]
       });
+      if (e4) throw e4;
 
       setShowTransferModal(false);
       setTransferData({ amount: '', businessId: '', note: '', transferType: 'Investment' });
       await fetchAllData();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error during transfer:", error);
+      alert("Transfer failed: " + (error.message || JSON.stringify(error)));
     } finally {
       setTransferLoading(false);
     }
   };
   
   const currencyCode = userProfile?.currency || 'USD';
+  const format = (amt: number) => formatCurrency(amt, currencyCode, isPrivacyMode);
 
   // Dynamic Balance Calculations
   const allIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
   const allExpense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
-  const totalBalance = (userProfile?.income || 0) + allIncome - allExpense;
+  const debtsTotal = transactions.filter(t => t.type === 'debt' && parsePersonalDebt(t).status !== 'paid').reduce((acc, t) => acc + t.amount, 0);
+  const totalBalance = (userProfile?.income || 0) + allIncome - allExpense - debtsTotal;
   
   // Current Month Data
   const currentMonthTx = transactions.filter(t => {
@@ -207,7 +221,6 @@ export default function Dashboard() {
 
   const incomeTotal = currentMonthTx.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
   const expenseTotal = currentMonthTx.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
-  const debtsTotal = transactions.filter(t => t.type === 'debt' && parsePersonalDebt(t).status !== 'paid').reduce((acc, t) => acc + t.amount, 0);
 
   const getIconForCategory = (category: string) => {
     switch (category.toLowerCase()) {
@@ -226,7 +239,7 @@ export default function Dashboard() {
 
   const topExpenseCategory = Object.entries(expensesByCategory).sort((a, b) => (b[1] as number) - (a[1] as number))[0];
   const insightMessage = topExpenseCategory 
-    ? `Highest spend this month: ${topExpenseCategory[0].charAt(0).toUpperCase() + topExpenseCategory[0].slice(1)} (${formatCurrency(topExpenseCategory[1] as number, currencyCode)})` 
+    ? `Highest spend this month: ${topExpenseCategory[0].charAt(0).toUpperCase() + topExpenseCategory[0].slice(1)} (${format(topExpenseCategory[1] as number)})` 
     : "Track your expenses to see insights!";
 
   return (
@@ -264,7 +277,7 @@ export default function Dashboard() {
                 <div>
                     <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Personal Balance</p>
                     <h2 className="text-3xl font-black tracking-tight leading-none">
-                        {formatCurrency(totalBalance, currencyCode)}
+                        {format(totalBalance)}
                     </h2>
                 </div>
                 <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm">
@@ -290,15 +303,15 @@ export default function Dashboard() {
                 <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center mb-3">
                     <TrendingUp size={18} />
                 </div>
-                <p className="text-[10px] font-bold uppercase opacity-80 mb-0.5 tracking-wider">Monthly Income</p>
-                <h4 className="text-lg font-black">{formatCurrency(incomeTotal, currencyCode)}</h4>
+                <p className="text-[10px] font-bold uppercase opacity-80 mb-0.5 tracking-wider">Total Money In</p>
+                <h4 className="text-lg font-black">{format((userProfile?.income || 0) + allIncome)}</h4>
             </div>
             <div className="bg-rose-500 p-5 rounded-[28px] text-white shadow-lg shadow-rose-200">
                 <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center mb-3">
                     <TrendingDown size={18} />
                 </div>
-                <p className="text-[10px] font-bold uppercase opacity-80 mb-0.5 tracking-wider">Monthly Spend</p>
-                <h4 className="text-lg font-black">{formatCurrency(expenseTotal, currencyCode)}</h4>
+                <p className="text-[10px] font-bold uppercase opacity-80 mb-0.5 tracking-wider">Total Money Out</p>
+                <h4 className="text-lg font-black">{format(allExpense + debtsTotal)}</h4>
             </div>
         </div>
       </div>
@@ -322,7 +335,7 @@ export default function Dashboard() {
                  </div>
                  <div className="text-right">
                      <p className="text-xs font-bold text-gray-500">Total Due</p>
-                     <p className="text-sm font-black text-gray-900">{formatCurrency(upcomingPayments.reduce((acc, p) => acc + p.amount, 0), currencyCode)}</p>
+                     <p className="text-sm font-black text-gray-900">{format(upcomingPayments.reduce((acc, p) => acc + p.amount, 0))}</p>
                  </div>
              </div>
              
@@ -353,7 +366,7 @@ export default function Dashboard() {
                                      <p className="text-xs font-bold text-gray-800 truncate">{p.title}</p>
                                  </div>
                                  <div className="text-right flex-shrink-0">
-                                     <p className="text-xs font-black text-gray-900">{formatCurrency(p.amount, currencyCode)}</p>
+                                     <p className="text-xs font-black text-gray-900">{format(p.amount)}</p>
                                      <p className={`text-[10px] font-bold ${p.due_date <= todayStr ? 'text-red-500' : 'text-gray-400'}`}>{timeLabel}</p>
                                  </div>
                              </div>
@@ -440,6 +453,7 @@ export default function Dashboard() {
       </div>
       
       {/* Transfer Modal */}
+      <ModalTracker isOpen={showTransferModal} />
       <AnimatePresence>
         {showTransferModal && (
           <>
@@ -501,6 +515,8 @@ export default function Dashboard() {
                         <input 
                           required
                           type="number"
+                          step="0.01"
+                          min="0"
                           value={transferData.amount}
                           onChange={(e) => setTransferData({...transferData, amount: e.target.value})}
                           className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 font-bold text-lg focus:ring-2 focus:ring-brand-500 transition-all px-1"
@@ -565,7 +581,10 @@ export default function Dashboard() {
           ) : (
             transactions.slice(0, 5).map(tx => {
               const { icon, bg, text } = getIconForCategory(tx.category);
-              const txAmountFormatted = formatCurrency(Math.abs(tx.amount), currencyCode);
+              const txAmountFormatted = format(Math.abs(tx.amount));
+              const isDebt = tx.type === 'debt';
+              const debtMeta = isDebt ? parsePersonalDebt(tx) : null;
+              const displayNote = isDebt ? (debtMeta?.note || 'Debt') : (tx.note || 'Transaction');
               
               return (
                 <div key={tx.id} className="flex items-center justify-between">
@@ -575,7 +594,7 @@ export default function Dashboard() {
                       </div>
                       <div>
                         <h4 className="text-sm font-bold text-gray-900 capitalize">{tx.category}</h4>
-                        <p className="text-xs text-gray-400 font-medium mt-0.5">{tx.note || (tx.type === 'debt' ? 'Debt' : 'Transaction')}</p>
+                        <p className="text-xs text-gray-400 font-medium mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">{displayNote}</p>
                       </div>
                   </div>
                   <div className="text-right">

@@ -11,6 +11,7 @@ import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 import { format, addDays, addWeeks, addMonths, addYears } from 'date-fns';
 import { useNavigate, useParams } from 'react-router-dom';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+import { ModalTracker } from '../components/ModalTracker';
 
 export default function BusinessUpcomingPayments() {
   const { businessId } = useParams();
@@ -403,6 +404,7 @@ export default function BusinessUpcomingPayments() {
         onSuccess={() => refreshPremiumStatus()}
       />
 
+      <ModalTracker isOpen={showModal || showDeleteModal || showUpgradeModal} />
       <AnimatePresence>
         {showModal && (
           <>
