@@ -10,6 +10,7 @@ import { moveToTrash } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+import { ModalTracker } from '../components/ModalTracker';
 
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 
@@ -398,6 +399,7 @@ export default function BusinessSaleList() {
         itemName={saleToDelete ? `${saleToDelete.quantity}x ${saleToDelete.product_name}` : undefined}
       />
 
+      <ModalTracker isOpen={showModal || showDeleteModal} />
       <AnimatePresence>
         {showModal && (
           <>

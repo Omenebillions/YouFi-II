@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency } from '../lib/currency';
 import { GoogleGenAI, Type } from '@google/genai';
 import { motivationQuotes } from '../lib/quotes';
+import { ModalTracker } from '../components/ModalTracker';
 
 // Removed client-side GoogleGenAI
 
@@ -540,7 +541,8 @@ export default function Goals() {
            )}
         </div>
       )}
-
+      
+      <ModalTracker isOpen={isAddingGoal || isAddingPlan} />
       {/* Add Goal Modal */}
       {isAddingGoal && (
           <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4">

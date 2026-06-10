@@ -28,12 +28,17 @@ import BusinessTransactionList from './pages/BusinessTransactionList';
 import BusinessDebtList from './pages/BusinessDebtList';
 import BusinessCoach from './pages/BusinessCoach';
 import BusinessGoals from './pages/BusinessGoals';
+import LivingExpenses from './pages/LivingExpenses';
 import UpcomingPayments from './pages/UpcomingPayments';
 import BusinessUpcomingPayments from './pages/BusinessUpcomingPayments';
 import TrashBin from './pages/TrashBin';
 
 import BusinessIdeas from './pages/BusinessIdeas';
 import AuthCallback from './pages/AuthCallback';
+import Pricing from './pages/Pricing';
+import Terms from './pages/Terms';
+import Privacy from './pages/Privacy';
+import RefundPolicy from './pages/RefundPolicy';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -90,42 +95,59 @@ function AppInitializer() {
   return null;
 }
 
+import { AdManagerProvider } from './components/AdManager';
+
+import { PrivacyProvider } from './contexts/PrivacyContext';
+
+import { UIProvider } from './contexts/UIContext';
+
 export default function App() {
   return (
     <AuthProvider>
       <PremiumProvider>
-        <NotificationProvider>
-          <BrowserRouter>
-            <AppInitializer />
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/auth/callback" element={<AuthCallback />} />
-              
-              <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
-                <Route index element={<Dashboard />} />
-                <Route path="add" element={<AddTransaction />} />
-                <Route path="auto-import" element={<AutoImport />} />
-                <Route path="coach" element={<Coach />} />
-                <Route path="insights" element={<Insights />} />
-                <Route path="goals" element={<Goals />} />
-                <Route path="profile" element={<Profile />} />
-                <Route path="history/:type" element={<HistoryPage />} />
-                <Route path="business" element={<BusinessList />} />
-                <Route path="business-ideas" element={<BusinessIdeas />} />
-                <Route path="business/:businessId" element={<BusinessDashboard />} />
-                <Route path="business/:businessId/products" element={<BusinessProductList />} />
-                <Route path="business/:businessId/sales" element={<BusinessSaleList />} />
-                <Route path="business/:businessId/goals" element={<BusinessGoals />} />
-                <Route path="business/:businessId/transactions/:type" element={<BusinessTransactionList />} />
-                <Route path="business/:businessId/debts" element={<BusinessDebtList />} />
-                <Route path="business/:businessId/upcoming-payments" element={<BusinessUpcomingPayments />} />
-                <Route path="business/:businessId/coach" element={<BusinessCoach />} />
-                <Route path="upcoming-payments" element={<UpcomingPayments />} />
-                <Route path="trash" element={<TrashBin />} />
-              </Route>
-            </Routes>
-          </BrowserRouter>
-        </NotificationProvider>
+        <PrivacyProvider>
+          <NotificationProvider>
+            <UIProvider>
+            <BrowserRouter>
+              <AdManagerProvider>
+                <AppInitializer />
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/auth/callback" element={<AuthCallback />} />
+                  
+                  <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
+                    <Route index element={<Dashboard />} />
+                    <Route path="add" element={<AddTransaction />} />
+                    <Route path="auto-import" element={<AutoImport />} />
+                    <Route path="coach" element={<Coach />} />
+                    <Route path="insights" element={<Insights />} />
+                    <Route path="goals" element={<Goals />} />
+                    <Route path="profile" element={<Profile />} />
+                    <Route path="history/:type" element={<HistoryPage />} />
+                    <Route path="business" element={<BusinessList />} />
+                    <Route path="business-ideas" element={<BusinessIdeas />} />
+                    <Route path="business/:businessId" element={<BusinessDashboard />} />
+                    <Route path="business/:businessId/products" element={<BusinessProductList />} />
+                    <Route path="business/:businessId/sales" element={<BusinessSaleList />} />
+                    <Route path="business/:businessId/goals" element={<BusinessGoals />} />
+                    <Route path="business/:businessId/transactions/:type" element={<BusinessTransactionList />} />
+                    <Route path="business/:businessId/debts" element={<BusinessDebtList />} />
+                    <Route path="business/:businessId/upcoming-payments" element={<BusinessUpcomingPayments />} />
+                    <Route path="business/:businessId/coach" element={<BusinessCoach />} />
+                    <Route path="living-expenses" element={<LivingExpenses />} />
+                    <Route path="upcoming-payments" element={<UpcomingPayments />} />
+                    <Route path="trash" element={<TrashBin />} />
+                    <Route path="pricing" element={<Pricing />} />
+                    <Route path="terms" element={<Terms />} />
+                    <Route path="privacy" element={<Privacy />} />
+                    <Route path="refundpolicy" element={<RefundPolicy />} />
+                  </Route>
+                </Routes>
+              </AdManagerProvider>
+            </BrowserRouter>
+            </UIProvider>
+          </NotificationProvider>
+        </PrivacyProvider>
       </PremiumProvider>
     </AuthProvider>
   );

@@ -36,7 +36,10 @@ export const CURRENCIES = [
   { code: 'PEN', symbol: 'S/', label: 'Peruvian Sol (PEN)' }
 ];
 
-export const formatCurrency = (amount: number, currencyCode: string = 'USD') => {
+export const formatCurrency = (amount: number, currencyCode: string = 'USD', isPrivacyMode: boolean = false) => {
+  if (isPrivacyMode) {
+    return '••••';
+  }
   return new Intl.NumberFormat(undefined, { 
     style: 'currency', 
     currency: currencyCode,

@@ -30,7 +30,9 @@ export default function Login() {
         await signUpEmail(email, password, name);
       }
     } catch (err: any) {
-      if (err.code === 'auth/invalid-credential') {
+      if (err.message && err.message.includes('Failed to fetch')) {
+         setError('Failed to connect to the database. Please ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are correctly configured in your settings.');
+      } else if (err.code === 'auth/invalid-credential') {
          setError('Invalid email or password.');
       } else if (err.code === 'auth/email-already-in-use') {
          setError('This email is already registered. Please log in.');

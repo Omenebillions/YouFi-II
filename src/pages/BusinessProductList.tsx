@@ -12,6 +12,7 @@ import CameraScanner from '../components/CameraScanner';
 import { motion, AnimatePresence } from 'motion/react';
 import { moveToTrash } from '../services/db';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+import { ModalTracker } from '../components/ModalTracker';
 
 import { formatCurrency as formatCurrencyGlobal, CURRENCIES } from '../lib/currency';
 
@@ -369,6 +370,7 @@ export default function BusinessProductList() {
       />
 
       {/* Product Modal */}
+      <ModalTracker isOpen={showModal || showRestockModal || showDeleteModal || showUpgradePrompt || showWebScanner} />
       <AnimatePresence>
         {showModal && (
           <>

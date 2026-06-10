@@ -13,6 +13,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 import { motion, AnimatePresence } from 'motion/react';
+import { ModalTracker } from '../components/ModalTracker';
 
 const businessQuotes = [
   "Structure follows strategy. Align your capital to your business vision.",
@@ -723,6 +724,7 @@ export default function BusinessGoals() {
       )}
 
       {/* Target Setup Modal */}
+      <ModalTracker isOpen={isAddingGoal || isAddingPlan} />
       {isAddingGoal && (
         <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto pb-8">

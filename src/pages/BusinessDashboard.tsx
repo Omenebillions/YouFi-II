@@ -1,23 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Building2, TrendingUp, TrendingDown, 
   Package, ShoppingCart, ArrowRightLeft, Plus, 
-  MoreVertical, PieChart, CreditCard, AlertCircle, Activity, CalendarDays
+  MoreVertical, PieChart, CreditCard, AlertCircle, Activity, CalendarDays, X
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { usePrivacy } from '../contexts/PrivacyContext';
 import { parseBusinessName, parseBusinessTxCategory, serializeBusinessTxCategory } from '../lib/business';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 import NotificationCenter from '../components/NotificationCenter';
+import { ModalTracker } from '../components/ModalTracker';
 
 export default function BusinessDashboard() {
   const { businessId } = useParams();
   const navigate = useNavigate();
   const { user, userProfile } = useAuth();
+  const { isPrivacyMode } = usePrivacy();
   const [business, setBusiness] = useState<any>(null);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [bTxs, setBTxs] = useState<any[]>([]);
@@ -32,12 +35,11 @@ export default function BusinessDashboard() {
 
   const currencyCode = userProfile?.currency || 'USD';
 
-  useEffect(() => {
+  const fetchData = useCallback(async (showLoader = false) => {
     if (!businessId || !user) return;
+    if (showLoader) setLoading(true);
 
-    setLoading(true);
-
-    const fetchData = async () => {
+    try {
       const [bizRes, txRes, prodRes, salesRes, debtRes, recentRes, upcomingRes] = await Promise.all([
         supabase.from('businesses').select('*').eq('id', businessId).single(),
         supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id),
@@ -84,10 +86,17 @@ export default function BusinessDashboard() {
           };
         }));
       }
-      setLoading(false);
-    };
+    } catch (err) {
+      console.error("Error fetching business dashboard data:", err);
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }, [businessId, user]);
 
-    fetchData();
+  useEffect(() => {
+    if (!businessId || !user) return;
+
+    fetchData(true);
 
     // Subscriptions
     const bizChannel = supabase.channel(`biz-dashboard-${businessId}`)
@@ -102,65 +111,17 @@ export default function BusinessDashboard() {
           });
         }
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_transactions', filter: `business_id=eq.${businessId}` }, () => refreshData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales', filter: `business_id=eq.${businessId}` }, () => refreshData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `business_id=eq.${businessId}` }, () => refreshData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_debts', filter: `business_id=eq.${businessId}` }, () => refreshData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'upcoming_payments', filter: `user_id=eq.${user.id}` }, () => refreshData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_transactions', filter: `business_id=eq.${businessId}` }, () => fetchData(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales', filter: `business_id=eq.${businessId}` }, () => fetchData(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `business_id=eq.${businessId}` }, () => fetchData(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_debts', filter: `business_id=eq.${businessId}` }, () => fetchData(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'upcoming_payments', filter: `user_id=eq.${user.id}` }, () => fetchData(false))
       .subscribe();
-
-    const refreshData = async () => {
-      const [bizRes, txRes, prodRes, salesRes, debtRes, recentRes, upcomingRes] = await Promise.all([
-        supabase.from('businesses').select('*').eq('id', businessId).single(),
-        supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id),
-        supabase.from('products').select('*', { count: 'exact', head: true }).eq('business_id', businessId).eq('user_id', user.id),
-        supabase.from('sales').select('*').eq('business_id', businessId).eq('user_id', user.id),
-        supabase.from('business_debts').select('*').eq('business_id', businessId).eq('user_id', user.id).eq('status', 'unpaid'),
-        supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id).order('date', { ascending: false }).limit(5),
-        supabase.from('upcoming_payments').select('*').eq('user_id', user.id)
-      ]);
-      if (bizRes.data) {
-        const meta = parseBusinessName(bizRes.data.name);
-        setBusiness({
-          ...bizRes.data,
-          name: meta.name,
-          category: meta.category,
-          description: meta.description
-        });
-      }
-      if (txRes.data) {
-        setBTxs(txRes.data.map((row: any) => {
-          const meta = parseBusinessTxCategory(row.category);
-          return {
-            ...row,
-            category: meta.category,
-            note: meta.note || ''
-          };
-        }));
-      }
-      if (prodRes.count !== null) setProductsCount(prodRes.count);
-      if (salesRes.data) setBSales(salesRes.data);
-      if (debtRes.data) setBDebts(debtRes.data);
-      if (upcomingRes && upcomingRes.data) {
-        const bizUpcoming = upcomingRes.data.filter(p => p.business_id === businessId || (p.title && p.title.startsWith(`[Biz:${businessId}]`)));
-        setBUpcomingPayments(bizUpcoming);
-      }
-      if (recentRes.data) {
-        setRecentTransactions(recentRes.data.map((row: any) => {
-          const meta = parseBusinessTxCategory(row.category);
-          return {
-            ...row,
-            category: meta.category,
-            note: meta.note || ''
-          };
-        }));
-      }
-    };
 
     return () => {
       supabase.removeChannel(bizChannel);
     };
-  }, [businessId, user]);
+  }, [businessId, user, fetchData]);
 
   const stats = React.useMemo(() => {
     let txRev = 0;
@@ -262,11 +223,12 @@ export default function BusinessDashboard() {
            return;
         }
 
-        await supabase.from('businesses')
+        const { error: e1 } = await supabase.from('businesses')
           .update({ balance: (business.balance || 0) - amount })
           .eq('id', businessId);
+        if (e1) throw e1;
 
-        await supabase.from('business_transactions').insert({
+        const { error: e2 } = await supabase.from('business_transactions').insert({
            business_id: businessId, 
            user_id: user.id, 
            type: 'expense', 
@@ -274,18 +236,21 @@ export default function BusinessDashboard() {
            category: serializeBusinessTxCategory('Transfer to Personal', transferData.note || 'Transfer to personal account'),
            date: new Date().toISOString().split('T')[0]
         });
+        if (e2) throw e2;
 
-        await supabase.from('transactions').insert({
+        const { error: e3 } = await supabase.from('transactions').insert({
            user_id: user.id, type: 'income', amount, category: 'From Business',
            note: `From ${business.name}: ${transferData.note}`,
            date: new Date().toISOString().split('T')[0]
         });
+        if (e3) throw e3;
       } else {
-        await supabase.from('businesses')
+        const { error: e4 } = await supabase.from('businesses')
           .update({ balance: (business.balance || 0) + amount })
           .eq('id', businessId);
+        if (e4) throw e4;
 
-        await supabase.from('business_transactions').insert({
+        const { error: e5 } = await supabase.from('business_transactions').insert({
            business_id: businessId, 
            user_id: user.id, 
            type: 'income', 
@@ -293,24 +258,28 @@ export default function BusinessDashboard() {
            category: serializeBusinessTxCategory('Transfer from Personal', transferData.note || 'Transfer from personal account'),
            date: new Date().toISOString().split('T')[0]
         });
+        if (e5) throw e5;
         
-        await supabase.from('transactions').insert({
+        const { error: e6 } = await supabase.from('transactions').insert({
            user_id: user.id, type: 'expense', amount, category: 'To Business',
            note: `To ${business.name}: ${transferData.note}`,
            date: new Date().toISOString().split('T')[0]
         });
+        if (e6) throw e6;
       }
       setShowTransferModal(false);
       setTransferData({ amount: '', type: 'to-personal', note: '' });
-    } catch (error) {
+      fetchData();
+    } catch (error: any) {
       console.error("Error during transfer:", error);
+      alert("Transfer failed: " + (error.message || JSON.stringify(error)));
     } finally {
       setLoading(false);
     }
   };
 
   const formatCurrency = (val: number) => {
-    return formatCurrencyGlobal(val, currencyCode);
+    return formatCurrencyGlobal(val, currencyCode, isPrivacyMode);
   };
 
   const netProfit = stats.monthlyNetProfit;
@@ -630,18 +599,24 @@ export default function BusinessDashboard() {
          )}
       </div>
 
+      <ModalTracker isOpen={showTransferModal} />
       <AnimatePresence>
         {showTransferModal && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowTransferModal(false)} className="fixed inset-0 bg-black/40 z-[60]" />
             <motion.div initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }} className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[40px] z-[70] p-8 pb-32 max-h-[90vh] overflow-y-auto max-w-2xl mx-auto shadow-2xl">
-               <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2"><ArrowRightLeft size={20} className="text-brand-600" /> Fund Transfer</h2>
+               <div className="flex justify-between items-center mb-6">
+                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><ArrowRightLeft size={20} className="text-brand-600" /> Fund Transfer</h2>
+                 <button onClick={() => setShowTransferModal(false)} className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors">
+                    <X size={20} />
+                 </button>
+               </div>
                <form onSubmit={handleTransfer} className="flex flex-col gap-4">
                   <div className="bg-gray-100/50 p-1 rounded-2xl flex relative h-12">
                      <button type="button" onClick={() => setTransferData({...transferData, type: 'to-personal'})} className={`flex-1 flex items-center justify-center text-xs font-bold rounded-xl transition-all z-10 ${transferData.type === 'to-personal' ? 'text-brand-700 bg-white shadow-sm' : 'text-gray-500'}`}>Business → YouFi</button>
                      <button type="button" onClick={() => setTransferData({...transferData, type: 'to-business'})} className={`flex-1 flex items-center justify-center text-xs font-bold rounded-xl transition-all z-10 ${transferData.type === 'to-business' ? 'text-brand-700 bg-white shadow-sm' : 'text-gray-500'}`}>YouFi → Business</button>
                   </div>
-                  <div className="flex flex-col gap-1.5"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Amount</label><input required type="number" value={transferData.amount} onChange={(e) => setTransferData({...transferData, amount: e.target.value})} className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 font-bold text-lg" placeholder="0.00" /></div>
+                  <div className="flex flex-col gap-1.5"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Amount</label><input required type="number" step="0.01" min="0" value={transferData.amount} onChange={(e) => setTransferData({...transferData, amount: e.target.value})} className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900 font-bold text-lg" placeholder="0.00" /></div>
                   <div className="flex flex-col gap-1.5"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Reference</label><input value={transferData.note} onChange={(e) => setTransferData({...transferData, note: e.target.value})} className="bg-gray-50 border-none rounded-2xl p-4 text-gray-900" placeholder="Transfer notes..." /></div>
                   <button type="submit" disabled={loading} className="mt-4 bg-gray-900 text-white font-bold py-4 rounded-2xl w-full active:scale-95 transition-all shadow-lg">{loading ? 'Processing...' : 'Transfer Funds'}</button>
                   <button type="button" onClick={() => setShowTransferModal(false)} className="text-xs font-bold text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-widest text-center mt-2">Cancel Transaction</button>

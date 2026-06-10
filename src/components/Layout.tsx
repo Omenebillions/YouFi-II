@@ -1,19 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, Link, useNavigate, useParams } from 'react-router-dom';
 import { 
-  Home, Repeat, Target, MessageCircle, Plus, Menu, X, 
+  Home, Repeat, Target, MessageCircle, Plus, Menu, X, Sparkles, 
   ArrowDown, CreditCard, Settings, LogOut, Briefcase,
   Building2, ShoppingCart, Package, Wallet, TrendingUp, TrendingDown,
-  BarChart3, Calendar, History, LineChart, WifiOff
+  BarChart3, Calendar, History, LineChart, WifiOff, Eye, EyeOff
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { usePrivacy } from '../contexts/PrivacyContext';
+import { useUI } from '../contexts/UIContext';
 import { supabase } from '../services/supabase';
 import { parseBusinessName } from '../lib/business';
 import logo from '../assets/images/youfi_app_logo_1779452869088.png';
 import DuePaymentsBanner from './DuePaymentsBanner';
+import { useAdManager } from './AdManager';
 
 export default function Layout() {
   const { user, userProfile, logout } = useAuth();
+  const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
+  const { isModalOpen } = useUI();
+  const { handlePlusButtonClick } = useAdManager();
   const location = useLocation();
   const navigate = useNavigate();
   const { businessId: businessIdParam } = useParams();
@@ -92,16 +98,24 @@ export default function Layout() {
       </main>
       
       {/* Global Hamburger Menu Button */}
-      <button 
-         onClick={() => setDrawerOpen((prev) => !prev)}
-         className={`fixed top-2 right-2 z-[60] w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 ${
-           drawerOpen 
-             ? 'bg-gray-50 text-gray-500 hover:bg-gray-100' 
-             : 'bg-white border border-gray-100 text-gray-700 shadow-lg hover:bg-gray-50'
-         }`}
-      >
-        {drawerOpen ? <X size={20} /> : <Menu size={20} />}
-      </button>
+      <div className="fixed top-2 right-2 flex items-center gap-2 z-[60]">
+        <button 
+          onClick={togglePrivacyMode}
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 bg-white border border-gray-100 text-gray-400 shadow-lg hover:bg-gray-50`}
+        >
+          {isPrivacyMode ? <EyeOff size={18} className="text-brand-600" /> : <Eye size={18} />}
+        </button>
+        <button 
+           onClick={() => setDrawerOpen((prev) => !prev)}
+           className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 ${
+             drawerOpen 
+               ? 'bg-gray-50 text-gray-500 hover:bg-gray-100' 
+               : 'bg-white border border-gray-100 text-gray-700 shadow-lg hover:bg-gray-50'
+           }`}
+        >
+          {drawerOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+      </div>
 
       {/* Global Drawer */}
       <div 
@@ -229,6 +243,10 @@ export default function Layout() {
                     <CreditCard size={20} className="text-red-500" />
                     <span>Debt History</span>
                  </Link>
+                 <Link to="/living-expenses" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
+                    <Home size={20} className="text-emerald-600" />
+                    <span>Living Expenses</span>
+                 </Link>
                  <Link to="/upcoming-payments" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
                     <Calendar size={20} className="text-brand-600" />
                     <span>Upcoming Payments</span>
@@ -249,7 +267,31 @@ export default function Layout() {
              )}
           </nav>
           
-          <div className="mt-auto pt-6 border-t border-gray-100">
+          <div className="mt-auto pt-6 border-t border-gray-100 flex flex-col gap-4">
+             <div className="flex flex-col gap-2.5 px-3">
+                <Link 
+                   to="/pricing" 
+                   className="flex items-center gap-2.5 text-brand-600 font-bold text-xs" 
+                   onClick={() => setDrawerOpen(false)}
+                >
+                   <Sparkles size={14} className="fill-brand-50 shrink-0 text-amber-500" />
+                   <span>View Premium Plans</span>
+                </Link>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-400 font-semibold">
+                   <Link to="/terms" onClick={() => setDrawerOpen(false)} className="hover:text-gray-600 hover:underline">
+                      Terms of Service
+                   </Link>
+                   <span>•</span>
+                   <Link to="/privacy" onClick={() => setDrawerOpen(false)} className="hover:text-gray-600 hover:underline">
+                      Privacy Policy
+                   </Link>
+                   <span>•</span>
+                   <Link to="/refundpolicy" onClick={() => setDrawerOpen(false)} className="hover:text-gray-600 hover:underline">
+                      Refunds
+                   </Link>
+                </div>
+             </div>
+
              <button 
                onClick={() => {
                  setDrawerOpen(false);
@@ -274,13 +316,13 @@ export default function Layout() {
       )}
       
       {/* Personal Bottom Nav Wrapper */}
-      {!isBusinessPage && !location.pathname.includes('/coach') ? (
+      {!isBusinessPage && !location.pathname.includes('/coach') && !location.pathname.includes('/living-expenses') && !isModalOpen ? (
         <nav className="fixed bottom-2 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-30 shadow-xl">
           <NavItem to="/" icon={<Home size={22} />} isActive={location.pathname === '/'} />
           <NavItem to="/goals" icon={<Target size={22} />} isActive={location.pathname === '/goals'} />
           
           <div className="relative -top-8 flex-shrink-0">
-            <NavLink to="/add" className="flex items-center justify-center w-14 h-14 bg-brand-600 rounded-full text-white shadow-[0_8px_20px_-6px_rgba(85,68,232,0.6)] transform transition-transform active:scale-95">
+            <NavLink to="/add" onClick={handlePlusButtonClick} className="flex items-center justify-center w-14 h-14 bg-brand-600 rounded-full text-white shadow-[0_8px_20px_-6px_rgba(85,68,232,0.6)] transform transition-transform active:scale-95">
               <Plus size={26} strokeWidth={2.5} />
             </NavLink>
           </div>
@@ -288,30 +330,30 @@ export default function Layout() {
           <NavItem to="/history/all" icon={<Repeat size={22} />} isActive={location.pathname === '/history/all'} />
           <NavItem to="/coach" icon={<MessageCircle size={22} />} isActive={location.pathname === '/coach'} />
         </nav>
-      ) : businessId && activeBusiness && !location.pathname.includes('/coach') ? (
+      ) : businessId && activeBusiness && !location.pathname.includes('/coach') && !isModalOpen ? (
         <>
           {showBusinessAddMenu && (
             <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-30" onClick={() => setShowBusinessAddMenu(false)}>
               <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white rounded-3xl p-4 shadow-xl border border-gray-100 transform transition-all flex flex-col gap-2">
-                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/sales?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                 <button onClick={() => { handlePlusButtonClick(); setShowBusinessAddMenu(false); navigate(`/business/${businessId}/sales?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
                     <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
                        <ShoppingCart size={20} />
                     </div>
                     Add Sales Record
                  </button>
-                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/transactions/income?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                 <button onClick={() => { handlePlusButtonClick(); setShowBusinessAddMenu(false); navigate(`/business/${businessId}/transactions/income?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
                     <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
                        <TrendingUp size={20} />
                     </div>
                     Add Business Income
                  </button>
-                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/transactions/expense?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                 <button onClick={() => { handlePlusButtonClick(); setShowBusinessAddMenu(false); navigate(`/business/${businessId}/transactions/expense?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
                     <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
                        <TrendingDown size={20} />
                     </div>
                     Add Business Expense
                  </button>
-                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/debts?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                 <button onClick={() => { handlePlusButtonClick(); setShowBusinessAddMenu(false); navigate(`/business/${businessId}/debts?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
                     <div className="w-10 h-10 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center">
                        <CreditCard size={20} />
                     </div>

@@ -11,6 +11,7 @@ import UpgradePrompt from '../components/UpgradePrompt';
 import { motion, AnimatePresence } from 'motion/react';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import { generateRecurringPayments } from '../lib/debt';
+import { ModalTracker } from '../components/ModalTracker';
 
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 
@@ -708,6 +709,7 @@ export default function BusinessDebtList() {
         itemName={debtToDelete ? debtToDelete.lender : undefined}
       />
 
+      <ModalTracker isOpen={showModal || showDeleteModal} />
       {/* Debt Modal */}
       <AnimatePresence>
         {showModal && (

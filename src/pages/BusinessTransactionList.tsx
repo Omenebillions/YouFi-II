@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { moveToTrash } from '../services/db';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+import { ModalTracker } from '../components/ModalTracker';
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 import { parseBusinessTxCategory, serializeBusinessTxCategory } from '../lib/business';
 
@@ -463,6 +464,7 @@ export default function BusinessTransactionList() {
         itemName={txToDelete ? `${txToDelete.category} - ${formatCurrency(txToDelete.amount)}` : undefined}
       />
 
+      <ModalTracker isOpen={showModal || showDeleteModal} />
       {/* Add Transaction Modal */}
       <AnimatePresence>
         {showModal && (

@@ -13,6 +13,7 @@ import {
   CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+import { ModalTracker } from '../components/ModalTracker';
 
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 import { parseBusinessName, serializeBusinessName } from '../lib/business';
@@ -431,6 +432,7 @@ export default function BusinessList() {
         itemName={bizToDelete ? bizToDelete.name : undefined}
       />
 
+      <ModalTracker isOpen={showModal || showDeleteModal} />
       {/* Modal */}
       <AnimatePresence>
         {showModal && (
