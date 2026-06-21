@@ -41,6 +41,33 @@ export default function App() {
     interstitialAd.load();
     rewardedAd.load();
 
+    // Show Interstitial on App Load (once)
+    let hasShownInterstitial = false;
+    const unsubscribeInterstitialLoaded = interstitialAd.addAdEventListener(AdEventType.LOADED, () => {
+      if (!hasShownInterstitial) {
+        hasShownInterstitial = true;
+        try {
+          interstitialAd.show();
+        } catch (e) {
+          console.warn('[AdError] Failed to show interstitial on load:', e);
+        }
+      }
+    });
+
+    const unsubscribeInterstitialClosed = interstitialAd.addAdEventListener(AdEventType.CLOSED, () => {
+      interstitialAd.load();
+    });
+
+    // Handle Rewarded Ad completions
+    const unsubscribeRewardedEarned = rewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, (reward) => {
+      console.log('[Native Ads] Earned reward:', reward);
+      sendMessageToWeb('rewardedAdCompleted', { reward: reward.amount || 20 });
+    });
+
+    const unsubscribeRewardedClosed = rewardedAd.addAdEventListener(AdEventType.CLOSED, () => {
+      rewardedAd.load();
+    });
+
     const handleBackPress = () => {
       if (webviewRef.current) {
         webviewRef.current.goBack();
@@ -52,6 +79,10 @@ export default function App() {
     BackHandler.addEventListener('hardwareBackPress', handleBackPress);
     return () => {
       BackHandler.removeEventListener('hardwareBackPress', handleBackPress);
+      unsubscribeInterstitialLoaded();
+      unsubscribeInterstitialClosed();
+      unsubscribeRewardedEarned();
+      unsubscribeRewardedClosed();
     };
   }, []);
 
@@ -100,7 +131,7 @@ export default function App() {
 
         case 'schedulePaymentNotifications':
           for (const instance of data.instances) {
-            // Schedule using exp-notifications
+            // Schedule using expo-notifications
             const d = new Date(instance.dueDate);
             await Notifications.scheduleNotificationAsync({
                content: {
@@ -121,14 +152,37 @@ export default function App() {
         case 'syncToCalendar':
           const { status } = await Calendar.requestCalendarPermissionsAsync();
           if (status === 'granted') {
-            const defaultCalendarSource = Platform.OS === 'ios'
+            const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+            
+            // Find a writable/primary calendar to sync
+            const defaultCalendar = Platform.OS === 'ios'
               ? await Calendar.getDefaultCalendarAsync()
-              : { isLocalAccount: true, name: 'YouFI' };
+              : calendars.find(c => c.isPrimary) || calendars[0];
               
-            // Example logic for calendar sync
-            Alert.alert("Calendar Sync", `Synced ${data.instances.length} events to calendar!`);
+            if (defaultCalendar) {
+              for (const instance of data.instances) {
+                const dueDate = new Date(instance.dueDate);
+                const startDate = new Date(dueDate);
+                startDate.setHours(9, 0, 0, 0); // 9:00 AM
+                const endDate = new Date(dueDate);
+                endDate.setHours(10, 0, 0, 0); // 10:00 AM
+
+                await Calendar.createEventAsync(defaultCalendar.id, {
+                  title: `YouFI Payment Due: ${data.title || 'Upcoming Commitment'}`,
+                  startDate,
+                  endDate,
+                  timeZone: 'UTC',
+                  notes: `Payment for bill amount corresponding to: ${instance.amount || 'N/A'}. Scheduled on YouFI.`,
+                  alarms: [{ relativeOffset: -120 }] // Alarm 2 hours prior
+                });
+              }
+              sendMessageToWeb('calendarSynced', { success: true, title: data.title });
+              Alert.alert("Calendar Sync", `Successfully synced ${data.instances.length} event(s) to your device calendar!`);
+            } else {
+              Alert.alert("Calendar Error", "No writable calendar was found on your device.");
+            }
           } else {
-             Alert.alert("Permission Required", "Calendar permission is needed.");
+             Alert.alert("Permission Required", "Calendar permission is needed to sync payment reminders.");
           }
           break;
 
@@ -138,10 +192,10 @@ export default function App() {
           if (permissionResult.granted) {
             const pickerResult = await ImagePicker.launchCameraAsync();
             if (!pickerResult.canceled) {
-               // We would usually extract base64 and send it back, or upload
-               // For now, notify web app (Assuming it takes base64)
-               sendMessageToWeb('photoCaptured', { uri: pickerResult.assets[0].uri });
-               Alert.alert("Photo Taken!", "This will be analyzed by Gemini backend!");
+                // We would usually extract base64 and send it back, or upload
+                // For now, notify web app (Assuming it takes base64)
+                sendMessageToWeb('photoCaptured', { uri: pickerResult.assets[0].uri });
+                Alert.alert("Photo Taken!", "This will be analyzed by Gemini backend!");
             }
           }
           break;
@@ -162,13 +216,6 @@ export default function App() {
                    }
                 }
               ]);
-              /*
-              // Real RevenueCat Implementation:
-              const { customerInfo } = await Purchases.purchasePackage(packages[0]);
-              if (typeof customerInfo.entitlements.active["premium"] !== "undefined") {
-                 sendMessageToWeb('premiumStatusChanged', { isPremium: true });
-              }
-              */
            } catch (e) {
               console.warn(e);
            }
@@ -180,7 +227,15 @@ export default function App() {
               // Load the next one
               rewardedAd.load();
            } else {
-              Alert.alert("Ad not ready", "Try again soon.");
+              // Sandbox Fallback
+              Alert.alert("Simulated Rewarded Ad", "Ad is loading. Simulating a quick ad watch to award standard reward...", [
+                {
+                  text: 'Close',
+                  onPress: () => {
+                    sendMessageToWeb('rewardedAdCompleted', { reward: 20 });
+                  }
+                }
+              ]);
            }
            break;
 

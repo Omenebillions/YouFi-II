@@ -451,8 +451,8 @@ export default function HistoryPage() {
                         </h4>
                         
                         {isDebt ? 
-                          (debtMeta?.note && <p className="text-xs font-medium text-gray-500 mt-0.5">{debtMeta.note}</p>) : 
-                          (tx.note && <p className="text-xs font-medium text-gray-500 mt-0.5">{tx.note}</p>)
+                          ((debtMeta?.note || tx.note || tx.description) && <p className="text-xs font-medium text-gray-500 mt-0.5">{debtMeta?.note || tx.note || tx.description}</p>) : 
+                          ((tx.note || tx.description) && <p className="text-xs font-medium text-gray-500 mt-0.5">{tx.note || tx.description}</p>)
                         }
                         <div className="flex flex-col gap-1 mt-1">
                           {tx.date && (() => {

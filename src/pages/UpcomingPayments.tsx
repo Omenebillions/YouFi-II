@@ -166,6 +166,16 @@ export default function UpcomingPayments() {
         }
       }
 
+      // Record a real personal expense transaction for this paid reminder
+      await supabase.from('transactions').insert({
+        user_id: user.id,
+        type: 'expense',
+        amount: payment.amount,
+        category: 'bills',
+        note: `Paid bill reminder: ${payment.title}`,
+        date: new Date().toISOString().split('T')[0]
+      });
+
       if (payment.is_recurring && payment.frequency) {
         const currentDueDate = new Date(payment.due_date);
         let nextDueDate;

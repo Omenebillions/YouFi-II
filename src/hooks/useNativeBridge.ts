@@ -49,6 +49,7 @@ export interface YouFINativeBridge {
   showInterstitialAd(): Promise<boolean>;
   
   // Utility
+  defaultTransactionLimit: number;
   log(message: string): void;
 }
 
@@ -65,6 +66,7 @@ const createWebViewBridge = (): YouFINativeBridge => {
     get isPremium() {
       return localStorage.getItem('youfi_premium') === 'true';
     },
+    defaultTransactionLimit: 20,
     
     async schedulePaymentNotifications(instances, title) {
       console.log(`[WebViewBridge] Scheduling notifications for: ${title}`);
@@ -197,12 +199,16 @@ const createWebViewBridge = (): YouFINativeBridge => {
     
     async showRewardedAd() {
       console.log('[WebViewBridge] Triggering native showRewardedAd');
-      if ((window as any).ReactNativeWebView) {
-        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
-          type: 'showRewardedAd'
-        }));
-      }
-      return { reward: 0 };
+      return new Promise<{ reward: number }>((resolve) => {
+        (window as any)._pendingRewardResolve = resolve;
+        if ((window as any).ReactNativeWebView) {
+          (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'showRewardedAd'
+          }));
+        } else {
+          resolve({ reward: 0 });
+        }
+      });
     },
     
     async showInterstitialAd() {
@@ -252,6 +258,7 @@ const createWebFallbackBridge = (): YouFINativeBridge => {
     get isPremium() {
       return localStorage.getItem('youfi_premium') === 'true';
     },
+    defaultTransactionLimit: 20,
     
     async schedulePaymentNotifications(instances, title) {
       console.log(`[WebBridge] Scheduled payment notifications for: ${title}`, instances);
@@ -346,9 +353,9 @@ const createWebFallbackBridge = (): YouFINativeBridge => {
     
     async showRewardedAd() {
       console.log(`[WebBridge] Showing rewarded ad...`);
-      const watchSuccess = window.confirm('Configure Web Sandbox: Watch mock rewarded video ad to earn +15 transactions?');
+      const watchSuccess = window.confirm('Configure Web Sandbox: Watch mock rewarded video ad to earn +20 transactions?');
       if (watchSuccess) {
-        return { reward: 15 };
+        return { reward: 20 };
       }
       return { reward: 0 };
     },
@@ -379,9 +386,14 @@ if (typeof window !== 'undefined' && !(window as any).YouFI) {
 export function useNativeBridge() {
   const [isNative, setIsNative] = useState(isWebView());
   const [bridge, setBridge] = useState<YouFINativeBridge | null>(null);
-  const [isPremium, setIsPremium] = useState(false);
+  const [isPremium, setIsPremium] = useState(true);
 
   useEffect(() => {
+    // Make the app free by default (unlock premium features)
+    if (localStorage.getItem('youfi_premium') !== 'false') {
+      localStorage.setItem('youfi_premium', 'true');
+    }
+
     // Expose dynamic updates so native can trigger reacts components instantly via injectJavaScript
     (window as any).updateYouFIPremiumStatus = (status: boolean) => {
       console.log('[NativeBridge] updateYouFIPremiumStatus called with:', status);
@@ -414,6 +426,14 @@ export function useNativeBridge() {
           if (parsed.type === 'pushToken') {
             console.log('[NativeBridge] Received push token from native:', parsed.token);
             localStorage.setItem('youfi_push_token', parsed.token);
+          }
+          if (parsed.type === 'rewardedAdCompleted') {
+            console.log('[NativeBridge] Received rewarded ad completion from native:', parsed.reward);
+            const reward = parsed.reward || 20;
+            if ((window as any)._pendingRewardResolve) {
+              (window as any)._pendingRewardResolve({ reward });
+              (window as any)._pendingRewardResolve = null;
+            }
           }
         }
       } catch (err) {
