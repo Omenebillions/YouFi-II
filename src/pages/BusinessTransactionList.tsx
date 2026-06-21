@@ -32,7 +32,7 @@ export default function BusinessTransactionList() {
 
   const { isPremium, bridge } = useNativeBridge();
   const [transactionLimit, setTransactionLimit] = useState(() => {
-    return Number(localStorage.getItem(`youfi_limit_${businessId}`)) || 5;
+    return Number(localStorage.getItem(`youfi_limit_${businessId}`)) || 20;
   });
   const [adLoading, setAdLoading] = useState(false);
 

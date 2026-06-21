@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
 import { tables } from '../services/db';
 import { Bell, ShoppingBag, HeartPulse, Wallet, ArrowDown, CreditCard, BarChart3, TrendingUp, ArrowRightLeft, Building2, TrendingDown, X } from 'lucide-react';
-import { isSameMonth, format, addDays, isThisWeek, isThisMonth, isThisYear } from 'date-fns';
+import { isSameMonth, format as formatDate, addDays, isThisWeek, isThisMonth, isThisYear } from 'date-fns';
 import { formatCurrency } from '../lib/currency';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { ModalTracker } from '../components/ModalTracker';
@@ -342,15 +342,15 @@ export default function Dashboard() {
              <div className="space-y-3 mt-4 relative z-10">
                  {(() => {
                      const now = new Date();
-                     const todayStr = format(now, 'yyyy-MM-dd');
-                     const tmrwStr = format(addDays(now, 1), 'yyyy-MM-dd');
+                     const todayStr = formatDate(now, 'yyyy-MM-dd');
+                     const tmrwStr = formatDate(addDays(now, 1), 'yyyy-MM-dd');
                      
                      // Sort by closeness
                      const sorted = [...upcomingPayments].sort((a,b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime()).slice(0, 3);
                      
                      return sorted.map((p, idx) => {
                          const date = new Date(p.due_date);
-                         let timeLabel = format(date, 'MMM d');
+                         let timeLabel = formatDate(date, 'MMM d');
                          
                          if (p.due_date < todayStr) timeLabel = 'Overdue';
                          else if (p.due_date === todayStr) timeLabel = 'Today';

@@ -229,6 +229,17 @@ export default function BusinessUpcomingPayments() {
         }
       }
 
+      // Record a real business expense transaction for this paid commitment
+      await supabase.from('business_transactions').insert({
+        user_id: user.id,
+        business_id: businessId,
+        type: 'expense',
+        amount: payment.amount,
+        category: 'bills',
+        note: `Paid commitment: ${getCleanTitle(payment.title)}`,
+        date: new Date().toISOString().split('T')[0]
+      });
+
       if (payment.is_recurring && payment.frequency) {
         const currentDueDate = new Date(payment.due_date);
         let nextDueDate;
