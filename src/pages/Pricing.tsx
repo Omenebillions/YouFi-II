@@ -51,6 +51,34 @@ export default function Pricing() {
     return formatCurrency(usdPrice * exchangeRate, currencyCode);
   };
 
+  const getProPrice = () => {
+    if (currencyCode === 'NGN') {
+      return billingPeriod === 'yearly' ? '₦1,666' : '₦2,500';
+    }
+    return billingPeriod === 'yearly' ? getLocalizedPrice(3.33) : getLocalizedPrice(4.99);
+  };
+
+  const getProBilledText = () => {
+    if (currencyCode === 'NGN') {
+      return billingPeriod === 'yearly' ? 'Billed yearly: ₦20,000' : 'Billed monthly: ₦2,500';
+    }
+    return billingPeriod === 'yearly' ? `Billed yearly: ${getLocalizedPrice(39.99)}` : `Billed monthly: ${getLocalizedPrice(4.99)}`;
+  };
+
+  const getBizPrice = () => {
+    if (currencyCode === 'NGN') {
+      return billingPeriod === 'yearly' ? '₦5,000' : '₦7,000';
+    }
+    return billingPeriod === 'yearly' ? getLocalizedPrice(8.33) : getLocalizedPrice(12.99);
+  };
+
+  const getBizBilledText = () => {
+    if (currencyCode === 'NGN') {
+      return billingPeriod === 'yearly' ? 'Billed yearly: ₦60,000' : 'Billed monthly: ₦7,000';
+    }
+    return billingPeriod === 'yearly' ? `Billed yearly: ${getLocalizedPrice(99.99)}` : `Billed monthly: ${getLocalizedPrice(12.99)}`;
+  };
+
   const freeFeatures = [
     "Manage up to 20 monthly transactions",
     "Primary Personal Finance ledger",
@@ -180,12 +208,12 @@ export default function Pricing() {
             
             <div className="mt-4 flex items-baseline gap-1">
               <span className="text-3.5xl font-black text-gray-950">
-                {billingPeriod === 'yearly' ? getLocalizedPrice(3.33) : getLocalizedPrice(4.99)}
+                {getProPrice()}
               </span>
               <span className="text-xs text-gray-400 font-bold">/ month</span>
             </div>
             <p className="text-[10px] text-brand-600 font-extrabold mt-0.5">
-              {billingPeriod === 'yearly' ? `Billed yearly: ${getLocalizedPrice(39.99)}` : `Billed monthly: ${getLocalizedPrice(4.99)}`}
+              {getProBilledText()}
             </p>
 
             <div className="h-px bg-gray-200/60 mx-1 my-5" />
@@ -218,9 +246,12 @@ export default function Pricing() {
             <p className="text-xs text-gray-400 mt-1">For growing institutions with multiple teams.</p>
             
             <div className="mt-4 flex items-baseline gap-1">
-              <span className="text-3xl font-black text-gray-950">{getLocalizedPrice(99.99)}</span>
-              <span className="text-xs text-gray-400 font-bold">/ year</span>
+              <span className="text-3xl font-black text-gray-950">{getBizPrice()}</span>
+              <span className="text-xs text-gray-400 font-bold">/ month</span>
             </div>
+            <p className="text-[10px] text-indigo-600 font-extrabold mt-0.5">
+              {getBizBilledText()}
+            </p>
 
             <div className="h-px bg-gray-100 mx-1 my-5" />
 
@@ -236,11 +267,11 @@ export default function Pricing() {
 
           <div className="mt-8">
             <button
-              onClick={() => setBillingPeriod('yearly')}
-              className="w-full bg-gray-950 text-white py-3 rounded-2xl font-bold text-xs text-center hover:bg-gray-800 transition-colors"
+              onClick={() => setPaywallOpen(true)}
+              className="w-full bg-gray-950 text-white py-3.5 rounded-2xl font-black text-xs text-center hover:bg-gray-800 transition-all active:scale-95 duration-100"
               id="subscribe-corp-pricing"
             >
-              Contact Commercial Division
+              {isPremium ? "Manage Subscription" : "Upgrade to Corporate SME"}
             </button>
           </div>
         </div>

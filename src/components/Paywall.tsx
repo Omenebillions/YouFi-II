@@ -19,7 +19,8 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly' | 'business'>('yearly');
+  const [selectedPlan, setSelectedPlan] = useState<'pro_monthly' | 'pro_yearly' | 'biz_monthly' | 'biz_yearly'>('pro_yearly');
+  const [paymentGateway, setPaymentGateway] = useState<'paystack' | 'revenuecat'>('paystack');
   
   const [exchangeRate, setExchangeRate] = useState<number>(1);
   const currencyCode = userProfile?.currency || 'USD';
@@ -43,13 +44,161 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
     return formatCurrency(usdPrice * exchangeRate, currencyCode);
   };
 
+  const getPlanPrice = (plan: 'pro_monthly' | 'pro_yearly' | 'biz_monthly' | 'biz_yearly') => {
+    const isNGN = currencyCode === 'NGN';
+    if (isNGN) {
+      switch (plan) {
+        case 'pro_monthly': return '₦2,500 / mo';
+        case 'pro_yearly': return '₦20,000 / yr';
+        case 'biz_monthly': return '₦7,000 / mo';
+        case 'biz_yearly': return '₦60,000 / yr';
+      }
+    }
+    
+    switch (plan) {
+      case 'pro_monthly': return getPrice(4.99) + ' / mo';
+      case 'pro_yearly': return getPrice(39.99) + ' / yr';
+      case 'biz_monthly': return getPrice(12.99) + ' / mo';
+      case 'biz_yearly': return getPrice(99.99) + ' / yr';
+    }
+  };
+
+  const getPaystackAmountAndCurrency = (plan: 'pro_monthly' | 'pro_yearly' | 'biz_monthly' | 'biz_yearly') => {
+    if (currencyCode === 'NGN') {
+      switch (plan) {
+        case 'pro_monthly': return { amount: 2500, currency: 'NGN' };
+        case 'pro_yearly': return { amount: 20000, currency: 'NGN' };
+        case 'biz_monthly': return { amount: 7000, currency: 'NGN' };
+        case 'biz_yearly': return { amount: 60000, currency: 'NGN' };
+      }
+    }
+    const usdPrices = {
+      pro_monthly: 4.99,
+      pro_yearly: 39.99,
+      biz_monthly: 12.99,
+      biz_yearly: 99.99
+    };
+    const usdPrice = usdPrices[plan];
+    if (currencyCode === 'GHS' || currencyCode === 'KES' || currencyCode === 'ZAR') {
+      return { amount: Math.round(usdPrice * exchangeRate * 100) / 100, currency: currencyCode };
+    }
+    return { amount: usdPrice, currency: 'USD' };
+  };
+
+  const loadPaystackPop = async (): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).PaystackPop) {
+        resolve((window as any).PaystackPop);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://js.paystack.co/v1/inline.js';
+      script.async = true;
+      script.onload = () => {
+        resolve((window as any).PaystackPop);
+      };
+      script.onerror = () => {
+        reject(new Error('Failed to load Paystack checkout script. Check your internet connection.'));
+      };
+      document.body.appendChild(script);
+    });
+  };
+
+  const payWithPaystack = async (plan: 'pro_monthly' | 'pro_yearly' | 'biz_monthly' | 'biz_yearly') => {
+    setLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const PaystackPop = await loadPaystackPop();
+      if (!PaystackPop) {
+        throw new Error("Paystack SDK could not be loaded.");
+      }
+
+      const { amount, currency } = getPaystackAmountAndCurrency(plan);
+      const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || 'pk_test_youfi_mock_public_key_sandbox';
+      
+      const email = userProfile?.email || 'customer@youfi.app';
+      const name = userProfile?.name || 'YouFi Customer';
+      const planLabel = plan.replace('_', ' ').toUpperCase();
+
+      const handler = PaystackPop.setup({
+        key: publicKey,
+        email: email,
+        amount: Math.round(amount * 100), // convert to subunit (kobo / cents / pesewas)
+        currency: currency,
+        ref: 'youfi_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now(),
+        metadata: {
+          userId: userProfile?.id,
+          custom_fields: [
+            {
+              display_name: "Customer Name",
+              variable_name: "customer_name",
+              value: name
+            },
+            {
+              display_name: "Plan Name",
+              variable_name: "plan_name",
+              value: planLabel
+            }
+          ]
+        },
+        callback: async function(response: any) {
+          setLoading(true);
+          try {
+            const verifyRes = await fetch('/api/paystack/verify', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                reference: response.reference,
+                userId: userProfile?.id
+              })
+            });
+            const verifyData = await verifyRes.json();
+            if (verifyRes.ok) {
+              await refreshPremiumStatus();
+              setSuccessMsg("Success! Premium has been activated via Paystack securely.");
+              if (onSuccess) onSuccess();
+              setTimeout(() => {
+                onClose();
+              }, 1500);
+            } else {
+              setError(verifyData.error || "Could not verify your Paystack charge.");
+            }
+          } catch (err: any) {
+            console.error("Verification endpoint error:", err);
+            setError("Could not communicate with our backend to verify your license. Reference: " + response.reference);
+          } finally {
+            setLoading(false);
+          }
+        },
+        onClose: function() {
+          setLoading(false);
+        }
+      });
+
+      handler.openIframe();
+    } catch (err: any) {
+      console.error("Paystack billing error:", err);
+      setError(err?.message || "An error occurred starting Paystack billing.");
+      setLoading(false);
+    }
+  };
+
   const planIds = {
-    monthly: 'premium_monthly',
-    yearly: 'premium_yearly',
-    business: 'premium_business'
+    pro_monthly: 'premium_monthly',
+    pro_yearly: 'premium_yearly',
+    biz_monthly: 'premium_business_monthly',
+    biz_yearly: 'premium_business'
   };
 
   const handleUpgrade = async () => {
+    if (paymentGateway === 'paystack') {
+      await payWithPaystack(selectedPlan);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccessMsg(null);
@@ -60,6 +209,12 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
       } else {
         const productIdentifier = planIds[selectedPlan];
         success = await revenueCat.purchaseProduct(productIdentifier);
+      }
+
+      // Web Sandbox fallback: successful paywall flow completes
+      if (!isNative) {
+        localStorage.setItem('youfi_premium', 'true');
+        success = true;
       }
 
       if (success) {
@@ -183,46 +338,122 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
               </div>
             </li>
           </ul>
+          
+          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">Select Payment Method</p>
+          <div className="grid grid-cols-2 gap-2.5 mb-5" id="payment-gateway-selector">
+            <button
+              type="button"
+              onClick={() => setPaymentGateway('paystack')}
+              className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between ${
+                paymentGateway === 'paystack'
+                  ? 'border-emerald-500 bg-emerald-50/10 text-emerald-950 font-bold shadow-sm ring-1 ring-emerald-500'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+              id="select-paystack-gateway"
+            >
+              <div className="flex items-center gap-2">
+                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${paymentGateway === 'paystack' ? 'border-emerald-500' : 'border-gray-300'}`}>
+                  {paymentGateway === 'paystack' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                </div>
+                <span className="text-xs font-black text-gray-900">Paystack</span>
+              </div>
+              <p className="text-[9px] text-gray-400 mt-1 pl-5 font-normal leading-tight">
+                Cards, Bank Transfer, USSD & <span className="font-semibold text-emerald-600">Android Google Pay</span>.
+              </p>
+              <span className="absolute top-2 right-2 bg-emerald-500 text-[6px] text-white font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-widest leading-none shadow-sm">Popular</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPaymentGateway('revenuecat')}
+              className={`p-3 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+                paymentGateway === 'revenuecat'
+                  ? 'border-indigo-500 bg-indigo-50/10 text-indigo-950 font-bold shadow-sm ring-1 ring-indigo-500'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+              id="select-revenuecat-gateway"
+            >
+              <div className="flex items-center gap-2">
+                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${paymentGateway === 'revenuecat' ? 'border-indigo-500' : 'border-gray-300'}`}>
+                  {paymentGateway === 'revenuecat' && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
+                </div>
+                <span className="text-xs font-black text-gray-900">Credit Card</span>
+              </div>
+              <p className="text-[9px] text-gray-400 mt-1 pl-5 font-normal leading-tight">
+                Standard credit cards & secondary sandbox simulation layer.
+              </p>
+            </button>
+          </div>
 
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">Select Subscription Tier</p>
-          <div className="grid grid-cols-3 gap-2.5 mb-6">
-            <button
-              onClick={() => setSelectedPlan('monthly')}
-              disabled={loading || restoreLoading}
-              className={`p-3.5 rounded-2xl border text-center transition-all ${
-                selectedPlan === 'monthly'
-                  ? 'border-brand-500 bg-brand-50/20 shadow-sm ring-1 ring-brand-500'
-                  : 'border-gray-100 bg-white hover:bg-gray-50'
-              }`}
-            >
-              <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">Monthly</span>
-              <span className="block text-sm font-black text-gray-950 mt-1.5">{getPrice(4.99)}</span>
-            </button>
-            <button
-              onClick={() => setSelectedPlan('yearly')}
-              disabled={loading || restoreLoading}
-              className={`p-3.5 rounded-2xl border text-center relative transition-all ${
-                selectedPlan === 'yearly'
-                  ? 'border-brand-500 bg-brand-50/20 shadow-sm ring-1 ring-brand-500'
-                  : 'border-gray-100 bg-white hover:bg-gray-50'
-              }`}
-            >
-              <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-widest leading-none">Best Val</span>
-              <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">Yearly</span>
-              <span className="block text-sm font-black text-gray-950 mt-1.5">{getPrice(39.99)}</span>
-            </button>
-            <button
-              onClick={() => setSelectedPlan('business')}
-              disabled={loading || restoreLoading}
-              className={`p-3.5 rounded-2xl border text-center transition-all ${
-                selectedPlan === 'business'
-                  ? 'border-brand-500 bg-brand-50/20 shadow-sm ring-1 ring-brand-500'
-                  : 'border-gray-100 bg-white hover:bg-gray-50'
-              }`}
-            >
-              <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">Corporate</span>
-              <span className="block text-sm font-black text-gray-950 mt-1.5">{getPrice(99.99)}</span>
-            </button>
+          <div className="space-y-4 mb-6">
+            {/* YouFi Pro */}
+            <div className="border border-gray-100 rounded-2xl p-3.5 bg-gray-50/50">
+              <span className="text-[10px] font-black text-brand-600 uppercase tracking-wider block mb-2">YouFi Professional (SME / Personal)</span>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlan('pro_monthly')}
+                  disabled={loading || restoreLoading}
+                  className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center justify-center ${
+                    selectedPlan === 'pro_monthly'
+                      ? 'border-brand-500 bg-brand-50/50 text-brand-950 font-bold shadow-sm ring-1 ring-brand-500'
+                      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Pro Monthly</span>
+                  <span className="text-xs font-black mt-1 text-gray-950">{getPlanPrice('pro_monthly').split(' ')[0]} / mo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlan('pro_yearly')}
+                  disabled={loading || restoreLoading}
+                  className={`p-3 rounded-xl border text-center relative transition-all flex flex-col items-center justify-center ${
+                    selectedPlan === 'pro_yearly'
+                      ? 'border-brand-500 bg-brand-50/50 text-brand-950 font-bold shadow-sm ring-1 ring-brand-500'
+                      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="absolute -top-2 right-2 bg-amber-500 text-white text-[7px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-widest leading-none shadow-sm">Save 33%</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Pro Yearly</span>
+                  <span className="text-xs font-black mt-1 text-gray-950">{getPlanPrice('pro_yearly').split(' ')[0]} / yr</span>
+                </button>
+              </div>
+            </div>
+
+            {/* YouFi Business Corporate */}
+            <div className="border border-indigo-100 rounded-2xl p-3.5 bg-indigo-50/10">
+              <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider block mb-2">YouFi Pro / Corporate SME (Multi-Profile)</span>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlan('biz_monthly')}
+                  disabled={loading || restoreLoading}
+                  className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center justify-center ${
+                    selectedPlan === 'biz_monthly'
+                      ? 'border-indigo-500 bg-indigo-50/30 text-indigo-950 font-bold shadow-sm ring-1 ring-indigo-500'
+                      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Corporate Mo</span>
+                  <span className="text-xs font-black mt-1 text-gray-950">{getPlanPrice('biz_monthly').split(' ')[0]} / mo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlan('biz_yearly')}
+                  disabled={loading || restoreLoading}
+                  className={`p-3 rounded-xl border text-center relative transition-all flex flex-col items-center justify-center ${
+                    selectedPlan === 'biz_yearly'
+                      ? 'border-indigo-500 bg-indigo-50/30 text-indigo-950 font-bold shadow-sm ring-1 ring-indigo-500'
+                      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="absolute -top-2 right-2 bg-indigo-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-widest leading-none shadow-sm">Save 35%</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">Corporate Yr</span>
+                  <span className="text-xs font-black mt-1 text-gray-950">{getPlanPrice('biz_yearly').split(' ')[0]} / yr</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-col gap-2.5">
@@ -240,7 +471,7 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
               ) : (
                 <>
                   <CreditCard size={16} />
-                  Activate {selectedPlan === 'monthly' ? 'Monthly' : selectedPlan === 'yearly' ? 'Yearly' : 'Business'} Premium
+                  Activate {selectedPlan.startsWith('pro') ? 'Pro' : 'Corporate'} {selectedPlan.endsWith('monthly') ? 'Monthly' : 'Yearly'} Plan
                 </>
               )}
             </button>

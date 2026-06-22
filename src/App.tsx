@@ -29,6 +29,7 @@ import BusinessDebtList from './pages/BusinessDebtList';
 import BusinessCoach from './pages/BusinessCoach';
 import BusinessGoals from './pages/BusinessGoals';
 import LivingExpenses from './pages/LivingExpenses';
+import ExpensesPlanner from './pages/ExpensesPlanner';
 import UpcomingPayments from './pages/UpcomingPayments';
 import BusinessUpcomingPayments from './pages/BusinessUpcomingPayments';
 import TrashBin from './pages/TrashBin';
@@ -135,6 +136,7 @@ export default function App() {
                     <Route path="business/:businessId/upcoming-payments" element={<BusinessUpcomingPayments />} />
                     <Route path="business/:businessId/coach" element={<BusinessCoach />} />
                     <Route path="living-expenses" element={<LivingExpenses />} />
+                    <Route path="expenses-planner" element={<ExpensesPlanner />} />
                     <Route path="upcoming-payments" element={<UpcomingPayments />} />
                     <Route path="trash" element={<TrashBin />} />
                     <Route path="pricing" element={<Pricing />} />

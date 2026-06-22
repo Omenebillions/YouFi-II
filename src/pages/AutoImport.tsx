@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, UploadCloud, FileText, Check, X, Tag, FileDigit } from 'lucide-react';
 import * as xlsx from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
+import { usePremium } from '../contexts/PremiumContext';
 import { addTransaction } from '../services/db';
 import { formatCurrency } from '../lib/currency';
 
@@ -136,6 +137,7 @@ const parseDataHeuristically = (data: any[]): ParsedTransaction[] => {
 export default function AutoImport() {
   const navigate = useNavigate();
   const { userProfile } = useAuth();
+  const { isPremium, aiTokens, showPaywall, refreshAITokens } = usePremium();
   const [activeMode, setActiveMode] = useState<'file' | 'text'>('file');
   const [file, setFile] = useState<File | null>(null);
   const [rawText, setRawText] = useState('');
@@ -176,11 +178,19 @@ export default function AutoImport() {
         // If regex fails or parses poorly, use AI as fallback if we wanted to...
         // But the prompt wants us to use their cue for robustness. So regex rules directly!
         if (parsed.length === 0) {
+            // Check limits for fallback AI OCR calls
+            if (!isPremium && aiTokens <= 0) {
+               showPaywall('Continuous AI Services');
+               throw new Error("Welcome Pack token limit reached. Please upgrade to Pro for unlimited AI transaction parsing.");
+            }
+
             // Enhanced AI Prompt for raw text
             const res = await fetch('/api/gemini/generate', {
                method: 'POST',
                headers: { 'Content-Type': 'application/json' },
                body: JSON.stringify({
+                  userId: userProfile?.id,
+                  isPremium,
                   contents: { parts: [{ text: `Parse these transactions. Look for DEBIT/CREDIT indicators, amounts, and dates:\n\n${rawText}` }] },
                   config: {
                     responseMimeType: 'application/json',
@@ -199,10 +209,17 @@ export default function AutoImport() {
                     }
                   }
                })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
-            parsed = JSON.parse(data.text || "[]");
+             });
+             const data = await res.json();
+             if (!res.ok) {
+               if (data.error === 'token_limit_reached') {
+                  showPaywall('Continuous AI Services');
+                  throw new Error(data.message);
+               }
+               throw new Error(data.error);
+             }
+             parsed = JSON.parse(data.text || "[]");
+             refreshAITokens();
         }
         
         if (parsed.length === 0) throw new Error("Could not detect any transactions in the text.");
@@ -272,12 +289,20 @@ export default function AutoImport() {
         
         // If OCR didn't work or found no transactions, or if it's a PDF, fall back to AI
         if (parsed.length === 0) {
+            // Check limits for fallback AI OCR calls
+            if (!isPremium && aiTokens <= 0) {
+               showPaywall('Continuous AI Services');
+               throw new Error("Welcome Pack token limit reached. Please upgrade to Pro for unlimited AI receipt & document importing.");
+            }
+
             contentParts.push({ text: "Extract all transaction records from this statement. Look for indicators such as 'DEBIT', 'CREDIT', amounts, and dates. Apply regex patterns to identify them. Categorize each transaction appropriately. The output must be JSON matching the schema." });
     
             const res = await fetch('/api/gemini/generate', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                userId: userProfile?.id,
+                isPremium,
                 contents: { parts: contentParts },
                 config: {
                   responseMimeType: 'application/json',
@@ -299,7 +324,13 @@ export default function AutoImport() {
               })
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
+            if (!res.ok) {
+               if (data.error === 'token_limit_reached') {
+                  showPaywall('Continuous AI Services');
+                  throw new Error(data.message);
+               }
+               throw new Error(data.error);
+            }
     
             const responseText = data.text || "[]";
             parsed = JSON.parse(responseText.trim());
@@ -310,6 +341,8 @@ export default function AutoImport() {
                amount: Math.abs(Number(p.amount) || 0),
                selected: true
             }));
+
+            refreshAITokens();
         }
 
         setParsedTxs(parsed);

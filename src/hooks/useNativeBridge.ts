@@ -386,12 +386,12 @@ if (typeof window !== 'undefined' && !(window as any).YouFI) {
 export function useNativeBridge() {
   const [isNative, setIsNative] = useState(isWebView());
   const [bridge, setBridge] = useState<YouFINativeBridge | null>(null);
-  const [isPremium, setIsPremium] = useState(true);
+  const [isPremium, setIsPremium] = useState(false);
 
   useEffect(() => {
-    // Make the app free by default (unlock premium features)
-    if (localStorage.getItem('youfi_premium') !== 'false') {
-      localStorage.setItem('youfi_premium', 'true');
+    // Default the app to free tier so token limits and paywalls apply
+    if (localStorage.getItem('youfi_premium') !== 'true') {
+      localStorage.setItem('youfi_premium', 'false');
     }
 
     // Expose dynamic updates so native can trigger reacts components instantly via injectJavaScript

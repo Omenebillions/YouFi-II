@@ -9,6 +9,8 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { useUI } from '../contexts/UIContext';
+import { usePremium } from '../contexts/PremiumContext';
+import Paywall from './Paywall';
 import { supabase } from '../services/supabase';
 import { parseBusinessName } from '../lib/business';
 import logo from '../assets/images/youfi_app_logo_1779452869088.png';
@@ -24,6 +26,8 @@ export default function Layout() {
   const navigate = useNavigate();
   const { businessId: businessIdParam } = useParams();
   
+  const { isPaywallOpen, paywallFeatureName, hidePaywall } = usePremium();
+
   // Custom hook-like behavior to extract businessId from pathname if not in params
   const businessIdMatch = location.pathname.match(/\/business\/([a-zA-Z0-9_-]+)/);
   const businessId = businessIdParam || (businessIdMatch ? businessIdMatch[1] : null);
@@ -247,6 +251,10 @@ export default function Layout() {
                     <Home size={20} className="text-emerald-600" />
                     <span>Living Expenses</span>
                  </Link>
+                 <Link to="/expenses-planner" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
+                    <Calendar size={20} className="text-indigo-500" />
+                    <span>Expenses Planner</span>
+                 </Link>
                  <Link to="/upcoming-payments" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
                     <Calendar size={20} className="text-brand-600" />
                     <span>Upcoming Payments</span>
@@ -377,6 +385,13 @@ export default function Layout() {
           </nav>
         </>
       ) : null}
+      
+      {/* Central Global Paywall Component */}
+      <Paywall 
+        isOpen={isPaywallOpen} 
+        onClose={hidePaywall} 
+        featureName={paywallFeatureName} 
+      />
     </div>
   );
 }
