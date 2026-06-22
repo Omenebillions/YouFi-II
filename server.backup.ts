@@ -53,15 +53,30 @@ const rateLimitMiddleware = (req: Request, res: Response, next: NextFunction) =>
 // ==================== SECURITY HEADERS MIDDLEWARE ====================
 
 const securityHeaders = (req: Request, res: Response, next: NextFunction) => {
+  // Prevent clickjacking
   res.setHeader('X-Frame-Options', 'DENY');
+  
+  // Prevent MIME sniffing
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  
+  // Enable XSS protection
   res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // Content Security Policy
   res.setHeader(
     'Content-Security-Policy',
     "default-src 'self'; script-src 'self' https://js.paystack.co https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' https:; font-src 'self'; connect-src 'self' https://api.paystack.co https://api.supabase.co https://api.revenuecat.com https://generativelanguage.googleapis.com"
   );
+  
+  // Referrer Policy
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+  
+  // Permissions Policy
+  res.setHeader(
+    'Permissions-Policy',
+    'geolocation=(), microphone=(), camera=(), payment=()'
+  );
+  
   next();
 };
 
@@ -75,6 +90,7 @@ const corsMiddleware = (req: Request, res: Response, next: NextFunction) => {
   ].filter(Boolean);
 
   const origin = req.headers.origin;
+  
   if (allowedOrigins.includes(origin || '')) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
@@ -90,7 +106,7 @@ const corsMiddleware = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
-// ==================== REQUEST LOGGING MIDDLEWARE ====================
+// ==================== REQUEST LOGGING & MONITORING ====================
 
 const requestLogger = (req: Request, res: Response, next: NextFunction) => {
   const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '') as string;
@@ -110,8 +126,11 @@ const requestLogger = (req: Request, res: Response, next: NextFunction) => {
       requestLogs.shift();
     }
 
+    // Log slow requests (> 1 second)
     if (Date.now() - startTime > 1000) {
-      console.warn(`[Slow Request] ${log.endpoint} took ${Date.now() - startTime}ms`);
+      console.warn(
+        `[Slow Request] ${log.endpoint} took ${Date.now() - startTime}ms`
+      );
     }
   });
 
@@ -125,7 +144,7 @@ const verifyPaystackSignature = (req: Request, res: Response, next: NextFunction
   const paystackSecret = process.env.PAYSTACK_SECRET_KEY || '';
   
   if (!signature || !paystackSecret) {
-    return next();
+    return next(); // Skip if no signature or secret
   }
 
   const hmac = crypto.createHmac('sha512', paystackSecret);
@@ -153,6 +172,13 @@ async function startServer() {
   const supabase = createClient(supabaseUrl || "", supabaseKey || "");
 
   // ==================== STRIPE SETUP ====================
+
+  // Stripe setup for webhook
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY || "";
+  const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
+
+  // ==================== STRIPE SETUP ====================
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY || "";
   const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
   const stripeEndpointSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
@@ -166,12 +192,14 @@ async function startServer() {
   }
 
   // ==================== MIDDLEWARE SETUP ====================
+  
+  // Apply security middleware FIRST
   app.use(rateLimitMiddleware);
   app.use(securityHeaders);
   app.use(corsMiddleware);
   app.use(requestLogger);
 
-  // ==================== STRIPE WEBHOOK ====================
+  // Raw body parser for webhook signatures (must be before JSON parser)
   app.post('/api/stripe/webhook', 
     express.raw({ type: 'application/json' }), 
     async (request, response) => {
@@ -193,19 +221,24 @@ async function startServer() {
         return response.status(400).send(`Webhook Error: ${err.message}`);
       }
 
+      // Handle successful payment
       if (event.type === 'checkout.session.completed' || event.type === 'invoice.paid') {
         const dataObject = event.data.object as any;
         const userId = dataObject.client_reference_id || dataObject.metadata?.userId;
         
         if (userId) {
           console.log(`[Stripe] Payment verified for user ${userId}`);
-          await supabase
+          const { error } = await supabase
             .from('users')
             .update({ 
               is_premium: true,
               premium_updated_at: new Date().toISOString()
             })
             .eq('id', userId);
+          
+          if (error) {
+            console.error("[Stripe] Failed to upgrade user:", error);
+          }
         }
       }
 
@@ -213,7 +246,8 @@ async function startServer() {
     }
   );
 
-  // ==================== PAYSTACK WEBHOOK ====================
+  // ==================== PAYSTACK WEBHOOKS ====================
+
   app.post('/api/paystack/webhook',
     express.json(),
     verifyPaystackSignature,
@@ -231,6 +265,7 @@ async function startServer() {
           console.log(`[Paystack] Successful charge ${reference}`);
 
           if (metadataUserId) {
+            // Update user premium status
             const { error } = await supabase
               .from('users')
               .update({ 
@@ -244,6 +279,7 @@ async function startServer() {
               console.error("[Paystack] Failed to update user:", error);
             }
 
+            // Log the transaction for audit
             await supabase.from('payment_transactions').insert({
               user_id: metadataUserId,
               reference,
@@ -262,7 +298,7 @@ async function startServer() {
               .maybeSingle();
 
             if (!findError && userRecord) {
-              await supabase
+              const { error } = await supabase
                 .from('users')
                 .update({ 
                   is_premium: true,
@@ -270,6 +306,10 @@ async function startServer() {
                   premium_updated_at: new Date().toISOString()
                 })
                 .eq('id', userRecord.id);
+
+              if (error) {
+                console.error("[Paystack] Failed to upgrade user by email:", error);
+              }
             }
           }
         }
@@ -277,12 +317,13 @@ async function startServer() {
         response.status(200).json({ status: 'ok' });
       } catch (err) {
         console.error("[Paystack Webhook] Error:", err);
-        response.status(200).json({ status: 'ok' });
+        response.status(200).json({ status: 'ok' }); // Always return 200 to prevent retries
       }
     }
   );
 
   // ==================== PAYSTACK INITIALIZATION ====================
+
   app.post('/api/paystack/initialize', express.json(), async (req, res) => {
     try {
       const { email, amount, planType, userId } = req.body;
@@ -309,7 +350,7 @@ async function startServer() {
         },
         body: JSON.stringify({
           email,
-          amount: Math.round(amount * 100),
+          amount: Math.round(amount * 100), // Convert to kobo
           reference,
           metadata: {
             userId,
@@ -346,6 +387,7 @@ async function startServer() {
   });
 
   // ==================== PAYSTACK VERIFICATION ====================
+
   app.post('/api/paystack/verify', express.json(), async (req, res) => {
     try {
       const { reference, userId } = req.body;
@@ -380,6 +422,7 @@ async function startServer() {
         const verifiedUserId = data.data.metadata?.userId || userId;
         
         if (verifiedUserId) {
+          // Ensure premium status is set
           await supabase
             .from('users')
             .update({ 
@@ -389,10 +432,11 @@ async function startServer() {
             })
             .eq('id', verifiedUserId);
 
+          // Log transaction
           await supabase.from('payment_transactions').insert({
             user_id: verifiedUserId,
             reference,
-            amount: data.data.amount / 100,
+            amount: data.data.amount / 100, // Convert from kobo back to main unit
             status: 'success',
             provider: 'paystack',
             plan_type: data.data.metadata?.planType || 'monthly'
@@ -419,7 +463,8 @@ async function startServer() {
   });
 
   // ==================== PAYSTACK PAYMENT HISTORY ====================
-  app.get('/api/paystack/history', async (req, res) => {
+
+  app.get('/api/paystack/history', express.json(), async (req, res) => {
     try {
       const userId = req.query.userId as string;
 
@@ -450,7 +495,7 @@ async function startServer() {
   // ==================== GENERAL JSON PARSER ====================
   app.use(express.json({ limit: "50mb" }));
 
-  // ==================== GEMINI CLIENT ====================
+  // Initialize Gemini client
   let gemini: GoogleGenAI | null = null;
   const getGemini = () => {
     if (!gemini) {
@@ -462,223 +507,159 @@ async function startServer() {
     return gemini;
   };
 
-  // ==================== PREMIUM VERIFICATION MIDDLEWARE ====================
-  const requirePremium = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { userId, isPremium: clientIsPremium } = req.body;
-      
-      if (!userId) {
-        return res.status(403).json({ 
-          error: "Unauthorized. User ID is required." 
-        });
-      }
-
-      (req as any).userId = userId;
-
-      let isDbPremium = false;
-
-      try {
-        const { data: user, error } = await supabase
-          .from('users')
-          .select('is_premium, premium_plan, premium_updated_at')
-          .eq('id', userId)
-          .maybeSingle();
-          
-        if (!error && user?.is_premium === true) {
-          isDbPremium = true;
+  // Middleware to verify user premium status securely from Database
+  const requirePremium = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+     try {
+        const { userId, isPremium: clientIsPremium } = req.body;
+        if (!userId) {
+           return res.status(403).json({ error: "Unauthorized. User ID is required to verify premium status." });
         }
-      } catch (dbErr) {
-        console.warn("[Premium Verification] DB check failed:", dbErr);
-      }
+        
+        let isDbPremium = false;
+        try {
+           // Secure backend database check
+           const { data: user, error } = await supabase
+              .from('users')
+              .select('is_premium')
+              .eq('id', userId)
+              .maybeSingle();
+              
+           if (!error && user && user.is_premium === true) {
+              isDbPremium = true;
+           }
+        } catch (dbErr) {
+           console.warn("DB is_premium check failed, falling back.", dbErr);
+        }
 
-      const isUserPremium = isDbPremium || 
-        (clientIsPremium === true && process.env.NODE_ENV !== "production");
+        const isUserPremium = isDbPremium || (clientIsPremium === true && process.env.NODE_ENV !== "production");
 
-      if (isUserPremium) {
-        return next();
-      }
+        if (isUserPremium) {
+           return next();
+        }
 
-      try {
+        // Free User Welcome Tokens tracking inside general budgets ledger
         let { data: tokenRecord, error: fetchErr } = await supabase
-          .from('budgets')
-          .select('id, amount')
-          .eq('user_id', userId)
-          .eq('category', '__AI_TOKENS__')
-          .maybeSingle();
+           .from('budgets')
+           .select('*')
+           .eq('user_id', userId)
+           .eq('category', '__AI_TOKENS__')
+           .maybeSingle();
 
-        if (fetchErr && fetchErr.code !== 'PGRST116') {
-          throw fetchErr;
+        if (fetchErr) {
+           console.error("AI token retrieval query failed:", fetchErr);
         }
 
         if (!tokenRecord) {
-          const { data: newRecord, error: insertErr } = await supabase
-            .from('budgets')
-            .insert({
-              user_id: userId,
-              category: '__AI_TOKENS__',
-              amount: 5,
-              period: 'all-time'
-            })
-            .select('id, amount')
-            .maybeSingle();
-          
-          if (insertErr) {
-            console.error("[Premium Verification] Failed to initialize tokens:", insertErr);
-            return res.status(500).json({ error: 'Failed to check AI token status' });
-          }
-          tokenRecord = newRecord;
+           const { data: newRecord, error: insertErr } = await supabase
+              .from('budgets')
+              .insert({
+                 user_id: userId,
+                 category: '__AI_TOKENS__',
+                 amount: 5,
+                 period: 'all-time'
+              })
+              .select()
+              .maybeSingle();
+           
+           if (insertErr) {
+              console.error("Failed to initialize welcome tokens:", insertErr);
+           }
+           tokenRecord = newRecord;
         }
 
-        const tokensRemaining = Math.max(0, Number(tokenRecord?.amount || 0));
+        const tokensRemaining = tokenRecord ? Math.max(0, Number(tokenRecord.amount)) : 5;
 
         if (tokensRemaining <= 0) {
-          return res.status(403).json({ 
-            error: "token_limit_reached", 
-            message: "Welcome tokens exhausted. Upgrade to Premium for unlimited AI features." 
-          });
+           return res.status(403).json({ 
+              error: "token_limit_reached", 
+              message: "You’ve seen the magic. Upgrade to Pro for unlimited AI automated accounting." 
+           });
         }
 
-        (req as any).tokenRecordId = tokenRecord?.id;
+        (req as any).tokenRecordId = tokenRecord ? tokenRecord.id : null;
         (req as any).tokensRemaining = tokensRemaining;
-
-      } catch (err) {
-        console.error("[Premium Verification] Token check error:", err);
-      }
-
-      next();
-
-    } catch (err: any) {
-      console.error("[Premium Verification] Unexpected error:", err);
-      res.status(500).json({ 
-        error: "Failed to verify premium status" 
-      });
-    }
+        next();
+     } catch (err: any) {
+        res.status(500).json({ error: "Failed to verify payment status." });
+     }
   };
 
-  // ==================== HEALTH CHECK ====================
+  // API endpoints
   app.get("/api/health", (req, res) => {
-    res.json({ 
-      status: "ok",
-      timestamp: new Date().toISOString(),
-      nodeEnv: process.env.NODE_ENV,
-      hasPaystack: !!paystackSecretKey,
-      hasStripe: !!stripe,
-      hasGemini: !!process.env.GEMINI_API_KEY
-    });
+    res.json({ status: "ok" });
   });
 
-  // ==================== SECURITY STATS (ADMIN) ====================
-  app.get("/api/admin/security-stats", (req, res) => {
-    const adminKey = req.headers['x-admin-key'];
-    if (adminKey !== process.env.ADMIN_KEY) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-
-    res.json({
-      rateLimitStoreSize: rateLimitStore.size,
-      requestLogsCount: requestLogs.length,
-      recentLogs: requestLogs.slice(-20)
-    });
-  });
-
-  // ==================== GEMINI CHAT ====================
   app.post("/api/gemini/chat", requirePremium, async (req, res) => {
     try {
       const { userMessage, systemInstruction, userId } = req.body;
-      
-      if (!userMessage) {
-        return res.status(400).json({ error: "userMessage is required" });
-      }
-
       const ai = getGemini();
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
         contents: userMessage,
         config: {
-          systemInstruction: systemInstruction || "You are a helpful financial assistant.",
+          systemInstruction,
           temperature: 0.7,
         },
       });
 
-      if ((req as any).tokenRecordId && !isDbPremium) {
-        const newAmount = Math.max(0, ((req as any).tokensRemaining || 5) - 1);
-        await supabase
-          .from('budgets')
-          .update({ amount: newAmount })
-          .eq('id', (req as any).tokenRecordId);
-        
-        console.log(`[AI] User ${userId} used token. Remaining: ${newAmount}`);
+      // Decrement tokens upon successful generation
+      if ((req as any).tokenRecordId) {
+         const newAmount = Math.max(0, (req as any).tokensRemaining - 1);
+         await supabase
+            .from('budgets')
+            .update({ amount: newAmount })
+            .eq('id', (req as any).tokenRecordId);
+         console.log(`[AI Tokens] User ${userId} consumed 1 welcome token. Remaining: ${newAmount}`);
       }
 
       res.json({ text: response.text });
-
     } catch (error: any) {
-      console.error("[Gemini Chat] Error:", error);
-      
+      console.error("Gemini Chat Error:", error);
       if (error.status === 401 || error.message?.includes('API key')) {
-        res.status(401).json({ 
-          error: "Gemini API Key invalid. Check server configuration." 
-        });
+        res.status(401).json({ error: "Your Gemini API Key is invalid. Please update it in the AI Studio settings." });
       } else if (error.status === 429) {
-        res.status(429).json({ 
-          error: "AI service rate limit exceeded. Try again later." 
-        });
+        res.status(429).json({ error: "Our AI service is currently experiencing high demand. Please try again in a moment." });
       } else {
-        res.status(500).json({ 
-          error: error.message || "Failed to communicate with AI" 
-        });
+        res.status(500).json({ error: error.message || "Failed to communicate with AI" });
       }
     }
   });
 
-  // ==================== GEMINI GENERATE ====================
   app.post("/api/gemini/generate", requirePremium, async (req, res) => {
     try {
       const { contents, config, userId } = req.body;
-
-      if (!contents) {
-        return res.status(400).json({ error: "contents is required" });
-      }
-
       const ai = getGemini();
+      
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
         contents,
-        config: config || {}
+        config,
       });
 
+      // Decrement tokens upon successful generation
       if ((req as any).tokenRecordId) {
-        const newAmount = Math.max(0, ((req as any).tokensRemaining || 5) - 1);
-        await supabase
-          .from('budgets')
-          .update({ amount: newAmount })
-          .eq('id', (req as any).tokenRecordId);
-        
-        console.log(`[AI Generate] User ${userId} used token. Remaining: ${newAmount}`);
+         const newAmount = Math.max(0, (req as any).tokensRemaining - 1);
+         await supabase
+            .from('budgets')
+            .update({ amount: newAmount })
+            .eq('id', (req as any).tokenRecordId);
+         console.log(`[AI Tokens] User ${userId} consumed 1 welcome token. Remaining: ${newAmount}`);
       }
 
       res.json({ text: response.text });
-
     } catch (error: any) {
-      console.error("[Gemini Generate] Error:", error);
-      
+      console.error("Gemini Generate Error:", error);
       if (error.status === 401 || error.message?.includes('API key')) {
-        res.status(401).json({ 
-          error: "Gemini API Key invalid. Check server configuration." 
-        });
+        res.status(401).json({ error: "Your Gemini API Key is invalid. Please update it in the AI Studio settings." });
       } else if (error.status === 429) {
-        res.status(429).json({ 
-          error: "AI service rate limit exceeded. Try again later." 
-        });
+        res.status(429).json({ error: "Our AI service is currently experiencing high demand. Please try again in a moment." });
       } else {
-        res.status(500).json({ 
-          error: error.message || "Failed to generate content" 
-        });
+        res.status(500).json({ error: error.message || "Failed to parse with AI" });
       }
     }
   });
 
-  // ==================== VITE & STATIC FILES ====================
+  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -687,41 +668,15 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath, {
-      maxAge: '1h',
-      etag: false
-    }));
-    
+    app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  // ==================== ERROR HANDLING ====================
-  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-    console.error("[Server Error]", err);
-    res.status(500).json({ 
-      error: process.env.NODE_ENV === 'production' 
-        ? 'Internal Server Error'
-        : err.message 
-    });
-  });
-
-  // ==================== START SERVER ====================
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`
-    ==========================================
-    ✅ Server running on http://localhost:${PORT}
-    ✅ Environment: ${process.env.NODE_ENV || 'development'}
-    ✅ Paystack: ${paystackSecretKey ? '✓' : '✗'}
-    ✅ Stripe: ${stripe ? '✓' : '✗'}
-    ✅ Gemini: ${process.env.GEMINI_API_KEY ? '✓' : '✗'}
-    ==========================================
-    `);
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
-startServer().catch(err => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+startServer();
