@@ -115,7 +115,10 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
       }
 
       const { amount, currency } = getPaystackAmountAndCurrency(plan);
-      const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || 'pk_test_youfi_mock_public_key_sandbox';
+      const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
+      if (!publicKey) {
+        throw new Error("VITE_PAYSTACK_PUBLIC_KEY is not configured on this workspace. Please add it to live variables.");
+      }
       
       const email = userProfile?.email || 'customer@youfi.app';
       const name = userProfile?.name || 'YouFi Customer';
@@ -392,7 +395,7 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
                 <span className="text-xs font-black text-gray-900">Credit Card</span>
               </div>
               <p className="text-[9px] text-gray-400 mt-1 pl-5 font-normal leading-tight">
-                Standard credit cards & secondary sandbox simulation layer.
+                Standard credit cards via RevenueCat billing.
               </p>
             </button>
           </div>
