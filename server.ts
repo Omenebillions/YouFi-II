@@ -129,15 +129,7 @@ async function startServer() {
     try {
       const paystackSecret = process.env.PAYSTACK_SECRET_KEY || "";
       if (!paystackSecret) {
-        console.warn("PAYSTACK_SECRET_KEY is not set. Simulating/mocking success in sandbox...");
-        if (userId) {
-          const { error } = await supabase
-            .from('users')
-            .update({ is_premium: true })
-            .eq('id', userId);
-          if (error) console.error("Auto upgrade failing in local dev verification:", error);
-        }
-        return res.json({ status: "success", mock: true, message: "Mock upgrade successful (sandbox fallback)" });
+        return res.status(400).json({ error: "PAYSTACK_SECRET_KEY is not configured on the server. Please add it to your Environment Variables." });
       }
 
       const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
