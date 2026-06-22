@@ -223,7 +223,7 @@ Don't compete on price alone. Understand your value proposition. If you provide 
       </div>
       
       {/* Input */}
-      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 py-3 pb-6">
+      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 py-3 pb-3">
         <div className="flex items-center gap-2">
            <input 
              type="text" 

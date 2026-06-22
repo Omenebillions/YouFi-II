@@ -86,6 +86,7 @@ export default function Layout() {
   };
 
   const isBusinessPage = location.pathname.startsWith('/business');
+  const isCoachPage = location.pathname.includes('/coach');
   const activeBusiness = businesses.find(b => b.id === businessId);
 
   return (
@@ -97,7 +98,7 @@ export default function Layout() {
           <span> Data is saved locally and will sync when you reconnect.</span>
         </div>
       )}
-      <main className={`flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 ${isBusinessPage ? 'pb-8' : 'pb-32'} pt-4 relative z-0 hide-scrollbar`}>
+      <main className={`flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 ${isCoachPage ? 'pb-0' : isBusinessPage ? 'pb-8' : 'pb-32'} pt-4 relative z-0 hide-scrollbar`}>
         <Outlet />
       </main>
       
