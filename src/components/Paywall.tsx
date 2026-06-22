@@ -121,6 +121,40 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
       const name = userProfile?.name || 'YouFi Customer';
       const planLabel = plan.replace('_', ' ').toUpperCase();
 
+      const handleVerification = (response: any) => {
+        setLoading(true);
+        fetch('/api/paystack/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            reference: response.reference,
+            userId: userProfile?.id
+          })
+        })
+        .then(async (verifyRes) => {
+          const verifyData = await verifyRes.json();
+          if (verifyRes.ok) {
+            await refreshPremiumStatus();
+            setSuccessMsg("Success! Premium has been activated via Paystack securely.");
+            if (onSuccess) onSuccess();
+            setTimeout(() => {
+              onClose();
+            }, 1500);
+          } else {
+            setError(verifyData.error || "Could not verify your Paystack charge.");
+          }
+        })
+        .catch((err) => {
+          console.error("Verification endpoint error:", err);
+          setError("Could not communicate with our backend to verify your license. Reference: " + response.reference);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+      };
+
       const handler = PaystackPop.setup({
         key: publicKey,
         email: email,
@@ -142,38 +176,16 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
             }
           ]
         },
-        callback: async function(response: any) {
-          setLoading(true);
-          try {
-            const verifyRes = await fetch('/api/paystack/verify', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                reference: response.reference,
-                userId: userProfile?.id
-              })
-            });
-            const verifyData = await verifyRes.json();
-            if (verifyRes.ok) {
-              await refreshPremiumStatus();
-              setSuccessMsg("Success! Premium has been activated via Paystack securely.");
-              if (onSuccess) onSuccess();
-              setTimeout(() => {
-                onClose();
-              }, 1500);
-            } else {
-              setError(verifyData.error || "Could not verify your Paystack charge.");
-            }
-          } catch (err: any) {
-            console.error("Verification endpoint error:", err);
-            setError("Could not communicate with our backend to verify your license. Reference: " + response.reference);
-          } finally {
-            setLoading(false);
-          }
+        callback: function(response: any) {
+          handleVerification(response);
+        },
+        onSuccess: function(response: any) {
+          handleVerification(response);
         },
         onClose: function() {
+          setLoading(false);
+        },
+        onCancel: function() {
           setLoading(false);
         }
       });
