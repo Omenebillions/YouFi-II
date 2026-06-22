@@ -232,7 +232,7 @@ While I cannot generate real-time AI responses without an internet connection, h
         <div ref={messagesEndRef} />
       </div>
       
-      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 pt-4 pb-6">
+      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-4 pt-3 pb-3">
         <div className="flex flex-col gap-2 relative max-w-2xl mx-auto">
            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-2xl p-2 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition-all shadow-sm">
               <input 
