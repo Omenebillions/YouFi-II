@@ -2,6 +2,8 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Camera, RefreshCcw, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAuth } from '../contexts/AuthContext';
+import { usePremium } from '../contexts/PremiumContext';
 
 interface CameraScannerProps {
   isOpen: boolean;
@@ -10,6 +12,8 @@ interface CameraScannerProps {
 }
 
 export default function CameraScanner({ isOpen, onClose, onScanComplete }: CameraScannerProps) {
+  const { user } = useAuth();
+  const { isPremium, aiTokens, showPaywall, refreshAITokens } = usePremium();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -68,6 +72,13 @@ export default function CameraScanner({ isOpen, onClose, onScanComplete }: Camer
   const captureAndScan = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     
+    // Quick client limit check
+    if (!isPremium && aiTokens <= 0) {
+       showPaywall('Continuous AI Services');
+       setError('Welcome Pack token limit reached. Please upgrade to Pro for unlimited AI camera receipt reader.');
+       return;
+    }
+
     setIsProcessing(true);
     setOcrProgress(0);
     
@@ -97,6 +108,8 @@ export default function CameraScanner({ isOpen, onClose, onScanComplete }: Camer
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          userId: user?.id,
+          isPremium,
           contents: {
             parts: [
               { text: "Extract the most prominent text from this image which represents the product brand/name. Do not extract pricing." },
@@ -120,7 +133,12 @@ export default function CameraScanner({ isOpen, onClose, onScanComplete }: Camer
         let errMsg = 'Failed to communicate with AI OCR service.';
         try {
           const errData = await response.json();
-          if (errData.error) errMsg = errData.error;
+          if (errData.error === 'token_limit_reached') {
+             showPaywall('Continuous AI Services');
+             errMsg = errData.message;
+          } else if (errData.error) {
+             errMsg = errData.error;
+          }
         } catch(e) {}
         throw new Error(errMsg);
       }
@@ -137,6 +155,9 @@ export default function CameraScanner({ isOpen, onClose, onScanComplete }: Camer
         name: extracted.name || 'Scanned Product',
         details: extracted.details
       });
+
+      // Update tokens count
+      refreshAITokens();
       
     } catch (err: any) {
       console.error("OCR Failed:", err);

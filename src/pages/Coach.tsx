@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Brain, Sparkles, TrendingUp, AlertCircle, Target, Briefcase, ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { usePremium } from '../contexts/PremiumContext';
 import Markdown from 'react-markdown';
 import { fetchTransactions, getBusinesses, getGoals, getUpcomingPayments } from '../services/db';
 
 export default function Coach() {
   const { userProfile, user } = useAuth();
+  const { isPremium, aiTokens, showPaywall, refreshAITokens } = usePremium();
   const [messages, setMessages] = useState<{role: 'user'|'model', text: string}[]>([
     { role: 'model', text: "Hi there! I'm your YouFi AI Advisor. I have access to your personal and business financials. Choose a topic below or type your question!" }
   ]);
@@ -44,6 +46,12 @@ export default function Coach() {
   const handleSend = async (userText: string = input) => {
     if (!userText.trim() || !user || loading) return;
     
+    // Quick client check
+    if (!isPremium && aiTokens <= 0) {
+      showPaywall('Continuous AI Services');
+      return;
+    }
+
     setInput('');
     setMessages(prev => [...prev, { role: 'user', text: userText.trim() }]);
     setLoading(true);
@@ -88,13 +96,22 @@ Format your responses beautifully in Markdown. Be concise, punchy, and highly an
       const res = await fetch('/api/gemini/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userMessage: userText.trim(), systemInstruction })
+        body: JSON.stringify({ userId: user.id, userMessage: userText.trim(), systemInstruction, isPremium })
       });
       
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to fetch AI response');
+      if (!res.ok) {
+        if (data.error === 'token_limit_reached') {
+          showPaywall('Continuous AI Services');
+          throw new Error(data.message);
+        }
+        throw new Error(data.error || 'Failed to fetch AI response');
+      }
       
       setMessages(prev => [...prev, { role: 'model', text: data.text || "I couldn't process that right now." }]);
+      
+      // Update tokens count
+      refreshAITokens();
     } catch (e: any) {
       console.error(e);
       if (!navigator.onLine || e.message?.toLowerCase().includes('network') || e.message?.toLowerCase().includes('fetch')) {
@@ -108,7 +125,7 @@ While I cannot generate real-time AI responses without an internet connection, h
          setMessages(prev => [...prev, { role: 'model', text: offlineMBAGuide }]);
       } else if (e.message?.includes('API Key') || e.message?.includes('API_KEY_INVALID')) {
          setMessages(prev => [...prev, { role: 'model', text: `**Configuration Error**: ${e.message}` }]);
-      } else if (e.message?.includes('high demand')) {
+      } else if (e.message?.includes('high demand') || e.message?.includes('You’ve seen the magic')) {
          setMessages(prev => [...prev, { role: 'model', text: e.message }]);
       } else {
          setMessages(prev => [...prev, { role: 'model', text: "Sorry, I'm having trouble connecting right now. Please try again." }]);
@@ -125,8 +142,42 @@ While I cannot generate real-time AI responses without an internet connection, h
     { label: "Give me an SME business strategy", icon: <Briefcase size={14} /> }
   ];
 
+  if (!isPremium && aiTokens <= 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[75vh] p-6 text-center animate-in fade-in duration-300">
+        <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-500 flex items-center justify-center mb-5 border border-amber-100 shadow-inner">
+          <Brain size={32} className="animate-pulse" />
+        </div>
+        <h2 className="text-xl font-extrabold text-gray-900 tracking-tight">You’ve seen the magic.</h2>
+        <p className="text-sm text-gray-500 mt-2 max-w-sm leading-relaxed">
+          Unlock unlimited AI financial consulting, OCR receipt scanners, automatic calendar event synchronizations, and strategic SME coaching.
+        </p>
+        <button
+          onClick={() => showPaywall('Continuous AI Services')}
+          className="mt-6 px-6 py-3.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-black rounded-2xl shadow-lg shadow-brand-600/20 active:scale-95 transition-all w-full max-w-xs"
+        >
+          Upgrade to Pro for Unlimited AI Advisory
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-full flex-1 relative pt-4">
+    <div className="flex flex-col h-full flex-1 relative pt-0">
+      {!isPremium && (
+        <div className="bg-brand-50 border-b border-brand-100 px-4 py-2 flex items-center justify-between text-[11px] font-semibold shrink-0">
+          <div className="flex items-center gap-1.5 text-brand-800">
+            <Sparkles size={13} className="text-amber-500 fill-amber-500 animate-pulse" />
+            <span>Welcome Pack: <span className="font-bold text-gray-950">{aiTokens} of 5</span> Free AI Queries remaining.</span>
+          </div>
+          <button 
+            onClick={() => showPaywall('Continuous AI Services')}
+            className="text-[9px] bg-brand-600 hover:bg-brand-700 font-bold text-white px-2.5 py-0.5 rounded-full transition-all shrink-0 active:scale-95 shadow-sm"
+          >
+            Upgrade
+          </button>
+        </div>
+      )}
       <div className="bg-[#f8f9fc]/80 backdrop-blur-md pt-4 pb-4 px-4 pr-12 sticky top-0 z-10 flex items-center gap-3 border-b border-gray-100">
         <div className="w-10 h-10 bg-brand-50 rounded-full flex items-center justify-center text-brand-600">
            <Brain size={22} />
