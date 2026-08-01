@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Building2, TrendingUp, TrendingDown, 
   Package, ShoppingCart, ArrowRightLeft, Plus, 
-  MoreVertical, PieChart, CreditCard, AlertCircle, Activity, CalendarDays, X
+  MoreVertical, PieChart, CreditCard, AlertCircle, Activity, CalendarDays, X, FileText, Settings, Store
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,6 +15,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveCont
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 import NotificationCenter from '../components/NotificationCenter';
 import { ModalTracker } from '../components/ModalTracker';
+import BusinessInvoices from '../components/BusinessInvoices';
 
 export default function BusinessDashboard() {
   const { businessId } = useParams();
@@ -28,10 +29,49 @@ export default function BusinessDashboard() {
   const [bDebts, setBDebts] = useState<any[]>([]);
   const [bUpcomingPayments, setBUpcomingPayments] = useState<any[]>([]);
   const [productsCount, setProductsCount] = useState(0);
+  const [activeTab, setActiveTab] = useState<'overview' | 'invoices'>('overview');
   
   const [loading, setLoading] = useState(true);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferData, setTransferData] = useState({ amount: '', type: 'to-personal', note: '' });
+
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [bizSettings, setBizSettings] = useState({
+    address: '',
+    phone: '',
+    email: '',
+    logo: '🏢',
+    paymentInstructions: ''
+  });
+
+  // Load business settings on mount or businessId change
+  useEffect(() => {
+    if (!businessId) return;
+    const stored = localStorage.getItem(`youfi_biz_settings_${businessId}`);
+    if (stored) {
+      try {
+        setBizSettings(JSON.parse(stored));
+      } catch (e) {
+        console.error("Error parsing business settings on dashboard mount:", e);
+      }
+    } else {
+      setBizSettings({
+        address: '',
+        phone: '',
+        email: '',
+        logo: '🏢',
+        paymentInstructions: ''
+      });
+    }
+  }, [businessId]);
+
+  const handleSaveBizSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!businessId) return;
+    localStorage.setItem(`youfi_biz_settings_${businessId}`, JSON.stringify(bizSettings));
+    setShowSettingsModal(false);
+    alert("Business profile settings saved successfully!");
+  };
 
   const currencyCode = userProfile?.currency || 'USD';
 
@@ -349,7 +389,17 @@ export default function BusinessDashboard() {
             <h1 className="text-xl font-bold text-gray-900">{business?.name || 'Loading...'}</h1>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">{business?.category}</span>
         </div>
-        <NotificationCenter businessId={businessId} />
+        <div className="flex items-center gap-2">
+            <button 
+              type="button"
+              onClick={() => setShowSettingsModal(true)} 
+              className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-500 shadow-sm transition-transform active:scale-95 hover:text-gray-700 hover:bg-gray-50"
+              title="Business Settings"
+            >
+              <Settings size={18} />
+            </button>
+            <NotificationCenter businessId={businessId} />
+        </div>
       </div>
 
       {/* Hero Stats */}
@@ -399,8 +449,29 @@ export default function BusinessDashboard() {
                </button>
             </div>
          </div>
-         <div className="absolute top-[-40px] right-[-40px] w-64 h-64 bg-brand-600/20 rounded-full blur-3xl shadow-inner shadow-brand-400 pointer-events-none"></div>
-      </div>
+                   <div className="absolute top-[-40px] right-[-40px] w-64 h-64 bg-brand-600/20 rounded-full blur-3xl shadow-inner shadow-brand-400 pointer-events-none"></div>
+       </div>
+
+       {/* Tabs Selector */}
+       <div className="print:hidden bg-gray-100 p-1 rounded-2xl flex mb-6 border border-gray-200/50">
+         <button 
+           type="button"
+           onClick={() => setActiveTab('overview')}
+           className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all ${activeTab === 'overview' ? 'bg-white text-gray-900 shadow-sm font-black' : 'text-gray-500 hover:text-gray-700'}`}
+         >
+           Overview
+         </button>
+         <button 
+           type="button"
+           onClick={() => setActiveTab('invoices')}
+           className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 ${activeTab === 'invoices' ? 'bg-white text-gray-900 shadow-sm font-black' : 'text-gray-500 hover:text-gray-700'}`}
+         >
+           <FileText size={14} className={activeTab === 'invoices' ? 'text-brand-600' : ''} /> Invoices
+         </button>
+       </div>
+
+       {activeTab === 'overview' ? (
+         <>
 
       {/* SME Tools Section */}
       <div className="grid grid-cols-3 gap-3 mb-8">
@@ -439,6 +510,12 @@ export default function BusinessDashboard() {
                <CalendarDays size={16} />
             </div>
             <p className="text-[10px] font-bold text-gray-500 uppercase">Upcoming Payments</p>
+         </div>
+         <div onClick={() => setShowSettingsModal(true)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm cursor-pointer active:scale-95 transition-all text-center">
+            <div className="w-8 h-8 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600 mx-auto mb-2">
+               <Settings size={16} />
+            </div>
+            <p className="text-[10px] font-bold text-gray-500 uppercase">Profile Settings</p>
          </div>
       </div>
 
@@ -596,10 +673,18 @@ export default function BusinessDashboard() {
                  </div>
                ))}
             </div>
-         )}
-      </div>
+          )}
+       </div>
+       </>
+       ) : (
+         <BusinessInvoices 
+           businessId={businessId!}
+           currencyCode={currencyCode}
+           businessName={business?.name || ''}
+         />
+       )}
 
-      <ModalTracker isOpen={showTransferModal} />
+       <ModalTracker isOpen={showTransferModal || showSettingsModal} />
       <AnimatePresence>
         {showTransferModal && (
           <>
@@ -625,6 +710,139 @@ export default function BusinessDashboard() {
           </>
         )}
       </AnimatePresence>
+
+       <AnimatePresence>
+         {showSettingsModal && (
+           <>
+             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowSettingsModal(false)} className="fixed inset-0 bg-black/40 z-[60]" />
+             <motion.div initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }} className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[40px] z-[70] p-8 pb-32 max-h-[90vh] overflow-y-auto max-w-2xl mx-auto shadow-2xl text-gray-800">
+                <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Store size={20} className="text-brand-600" /> Business Settings</h2>
+                  <button onClick={() => setShowSettingsModal(false)} className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors">
+                     <X size={20} />
+                  </button>
+                </div>
+                <form onSubmit={handleSaveBizSettings} className="flex flex-col gap-4">
+                  <p className="text-xs text-gray-400 leading-relaxed">These details are shared across invoices and billing documents for <span className="font-bold text-gray-700">{business?.name || 'your business'}</span>.</p>
+                  
+                  {/* Custom Logo Upload / Emoji Input Section */}
+                  <div className="p-4 bg-gray-50 border border-gray-150 rounded-2xl flex flex-col gap-3">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Business Logo</span>
+                    
+                    <div className="flex gap-4 items-center">
+                      {/* Visual Preview */}
+                      <div className="w-16 h-16 rounded-xl border border-gray-200 bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                        {bizSettings.logo && (bizSettings.logo.startsWith('data:') || bizSettings.logo.startsWith('http')) ? (
+                          <img src={bizSettings.logo} alt="Logo" className="w-full h-full object-contain p-1" />
+                        ) : (
+                          <span className="text-3xl">{bizSettings.logo || '🏢'}</span>
+                        )}
+                      </div>
+                      
+                      <div className="flex-1 flex flex-col gap-1.5">
+                        <p className="text-[10px] text-gray-500 font-medium">Use a text emoji/symbol, or upload your official company logo file (Max 1MB).</p>
+                        
+                        <div className="flex gap-2 items-center">
+                          <label className="cursor-pointer py-2 px-3 bg-white border border-gray-150 rounded-xl text-[10px] font-extrabold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95 flex items-center gap-1.5">
+                            <span>Upload Image File</span>
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  if (file.size > 1024 * 1024) {
+                                    alert("Logo size should be less than 1MB to ensure smooth saving.");
+                                    return;
+                                  }
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    setBizSettings({ ...bizSettings, logo: reader.result as string });
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                              className="hidden" 
+                            />
+                          </label>
+                          
+                          {(bizSettings.logo && (bizSettings.logo.startsWith('data:') || bizSettings.logo.startsWith('http'))) ? (
+                            <button 
+                              type="button"
+                              onClick={() => setBizSettings({ ...bizSettings, logo: '🏢' })}
+                              className="py-2 px-3 bg-red-50 text-red-600 border border-red-100 rounded-xl text-[10px] font-bold hover:bg-red-100 transition-colors"
+                            >
+                              Reset to Default
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-gray-400 font-bold">Or Emoji:</span>
+                              <input 
+                                type="text" 
+                                maxLength={4}
+                                value={bizSettings.logo} 
+                                onChange={(e) => setBizSettings({...bizSettings, logo: e.target.value})} 
+                                className="w-14 bg-white border border-gray-150 rounded-xl py-1 px-2 text-center text-sm font-bold text-gray-800 focus:border-brand-500"
+                                placeholder="🏢"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-0.5">Contact Phone</label>
+                    <input 
+                      type="tel" 
+                      value={bizSettings.phone} 
+                      onChange={(e) => setBizSettings({...bizSettings, phone: e.target.value})} 
+                      className="bg-gray-50 border border-gray-150 rounded-xl px-4 py-2.5 text-xs font-semibold text-gray-800"
+                      placeholder="+1 (555) 000-0000"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-0.5">Business Contact Email</label>
+                    <input 
+                      type="email" 
+                      value={bizSettings.email} 
+                      onChange={(e) => setBizSettings({...bizSettings, email: e.target.value})} 
+                      className="bg-gray-50 border border-gray-150 rounded-xl px-4 py-2.5 text-xs font-semibold text-gray-800"
+                      placeholder="billing@yourbusiness.com"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-0.5">Physical Address / Headquarters</label>
+                    <textarea 
+                      rows={2}
+                      value={bizSettings.address} 
+                      onChange={(e) => setBizSettings({...bizSettings, address: e.target.value})} 
+                      className="bg-gray-50 border border-gray-150 rounded-xl px-4 py-2.5 text-xs font-semibold text-gray-800 resize-none"
+                      placeholder="123 Business Rd, Suite 100, Metropolis"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-0.5">Payment Instructions (Optional)</label>
+                    <textarea 
+                      rows={2}
+                      value={bizSettings.paymentInstructions} 
+                      onChange={(e) => setBizSettings({...bizSettings, paymentInstructions: e.target.value})} 
+                      className="bg-gray-50 border border-gray-150 rounded-xl px-4 py-2.5 text-xs font-semibold text-gray-800 resize-none"
+                      placeholder="Bank: GTBank, Account: 0123456789..."
+                    />
+                  </div>
+
+                  <button type="submit" className="mt-4 bg-gray-900 text-white font-bold py-4 rounded-2xl w-full active:scale-95 transition-all shadow-lg">Save Settings</button>
+                  <button type="button" onClick={() => setShowSettingsModal(false)} className="text-xs font-bold text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-widest text-center mt-2">Cancel</button>
+                </form>
+             </motion.div>
+           </>
+         )}
+       </AnimatePresence>
     </div>
   );
 }

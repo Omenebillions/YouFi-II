@@ -15,13 +15,13 @@ import { supabase } from '../services/supabase';
 import { parseBusinessName } from '../lib/business';
 import logo from '../assets/images/youfi_app_logo_1779452869088.png';
 import DuePaymentsBanner from './DuePaymentsBanner';
-import { useAdManager } from './AdManager';
+
 
 export default function Layout() {
   const { user, userProfile, logout } = useAuth();
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
   const { isModalOpen } = useUI();
-  const { handlePlusButtonClick } = useAdManager();
+  
   const location = useLocation();
   const navigate = useNavigate();
   const { businessId: businessIdParam } = useParams();
@@ -232,6 +232,10 @@ export default function Layout() {
              ) : (
                <>
                  {/* Personal Finance Context */}
+                 <Link to="/business" className="flex items-center gap-4 text-gray-700 font-bold hover:bg-brand-50 p-3 rounded-xl transition-colors border border-dashed border-brand-200 mb-2" onClick={() => setDrawerOpen(false)}>
+                    <Briefcase size={20} className="text-brand-600" />
+                    <span>Business (SME)</span>
+                 </Link>
                  <Link to="/profile" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
                     <Settings size={20} className="text-gray-500" />
                     <span>Settings</span>
@@ -267,10 +271,6 @@ export default function Layout() {
                  <Link to="/coach" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
                     <MessageCircle size={20} className="text-brand-600" />
                     <span>AI Advisor</span>
-                 </Link>
-                 <Link to="/business" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-brand-50 p-3 rounded-xl transition-colors border border-dashed border-brand-200 mt-2" onClick={() => setDrawerOpen(false)}>
-                    <Briefcase size={20} className="text-brand-600" />
-                    <span>Business (SME)</span>
                  </Link>
                </>
              )}
@@ -326,12 +326,12 @@ export default function Layout() {
       
       {/* Personal Bottom Nav Wrapper */}
       {!isBusinessPage && !location.pathname.includes('/coach') && !location.pathname.includes('/living-expenses') && !isModalOpen ? (
-        <nav className="fixed bottom-2 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-30 shadow-xl">
+        <nav className="print:hidden fixed bottom-2 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-30 shadow-xl">
           <NavItem to="/" icon={<Home size={22} />} isActive={location.pathname === '/'} />
           <NavItem to="/goals" icon={<Target size={22} />} isActive={location.pathname === '/goals'} />
           
           <div className="relative -top-8 flex-shrink-0">
-            <NavLink to="/add" onClick={handlePlusButtonClick} className="flex items-center justify-center w-14 h-14 bg-brand-600 rounded-full text-white shadow-[0_8px_20px_-6px_rgba(85,68,232,0.6)] transform transition-transform active:scale-95">
+            <NavLink to="/add" className="flex items-center justify-center w-14 h-14 bg-brand-600 rounded-full text-white shadow-[0_8px_20px_-6px_rgba(85,68,232,0.6)] transform transition-transform active:scale-95">
               <Plus size={26} strokeWidth={2.5} />
             </NavLink>
           </div>
@@ -344,25 +344,25 @@ export default function Layout() {
           {showBusinessAddMenu && (
             <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-30" onClick={() => setShowBusinessAddMenu(false)}>
               <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white rounded-3xl p-4 shadow-xl border border-gray-100 transform transition-all flex flex-col gap-2">
-                 <button onClick={() => { handlePlusButtonClick(); setShowBusinessAddMenu(false); navigate(`/business/${businessId}/sales?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/sales?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
                     <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
                        <ShoppingCart size={20} />
                     </div>
                     Add Sales Record
                  </button>
-                 <button onClick={() => { handlePlusButtonClick(); setShowBusinessAddMenu(false); navigate(`/business/${businessId}/transactions/income?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/transactions/income?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
                     <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
                        <TrendingUp size={20} />
                     </div>
                     Add Business Income
                  </button>
-                 <button onClick={() => { handlePlusButtonClick(); setShowBusinessAddMenu(false); navigate(`/business/${businessId}/transactions/expense?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/transactions/expense?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
                     <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
                        <TrendingDown size={20} />
                     </div>
                     Add Business Expense
                  </button>
-                 <button onClick={() => { handlePlusButtonClick(); setShowBusinessAddMenu(false); navigate(`/business/${businessId}/debts?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
+                 <button onClick={() => { setShowBusinessAddMenu(false); navigate(`/business/${businessId}/debts?add=true`); }} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 text-gray-800 font-bold w-full transition-colors">
                     <div className="w-10 h-10 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center">
                        <CreditCard size={20} />
                     </div>
@@ -371,7 +371,7 @@ export default function Layout() {
               </div>
             </div>
           )}
-          <nav className="fixed bottom-2 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-40 shadow-xl">
+          <nav className="print:hidden fixed bottom-2 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-40 shadow-xl">
             <NavItem to={`/business/${businessId}`} icon={<Home size={22} />} isActive={location.pathname === `/business/${businessId}`} />
             <NavItem to={`/business/${businessId}/goals`} icon={<Target size={22} />} isActive={location.pathname.includes('/goals')} />
             

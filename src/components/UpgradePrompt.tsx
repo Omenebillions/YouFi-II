@@ -31,7 +31,7 @@ export default function UpgradePrompt({ isOpen, onClose, featureName = "Premium 
             setExchangeRate(data.rates[currencyCode]);
           }
         })
-        .catch(err => console.error("Error fetching exchange rate:", err));
+        .catch(err => console.warn("Exchange rate fetch failed, using default"));
     }
   }, [isOpen, currencyCode]);
 

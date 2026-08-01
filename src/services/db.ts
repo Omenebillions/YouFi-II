@@ -31,7 +31,7 @@ export const moveToTrash = async (tableName: string, originalId: string, data: a
     });
     if (error) throw error;
   } catch (error) {
-    console.error("Error moving to trash:", error);
+    console.warn("Warning moving to trash:", error);
   }
 };
 
@@ -128,7 +128,7 @@ export const addTransaction = async (data: any) => {
     }
     
   } catch (error) {
-    console.error("Error adding transaction:", error);
+    console.warn("Warning adding transaction:", error);
     throw error;
   }
 };
@@ -142,7 +142,7 @@ export const deleteTransaction = async (id: string) => {
       .eq('id', id);
     if (error) throw error;
   } catch (error) {
-    console.error("Error deleting transaction:", error);
+    console.warn("Warning deleting transaction:", error);
   }
 };
 
@@ -157,7 +157,7 @@ export const updateTransaction = async (id: string, data: any) => {
       .eq('id', id);
     if (error) throw error;
   } catch (error) {
-    console.error("Error updating transaction:", error);
+    console.warn("Warning updating transaction:", error);
     throw error;
   }
 };
@@ -173,7 +173,7 @@ export const fetchUser = async (userId: string) => {
     if (error) throw error;
     return data;
   } catch (error) {
-    console.error("Error fetching user:", error);
+    console.warn("Warning fetching user:", error);
   }
 };
 
@@ -188,7 +188,7 @@ export const createUserProfile = async (userId: string, data: any) => {
       });
     if (error) throw error;
   } catch (error) {
-    console.error("Error creating user profile:", error);
+    console.warn("Warning creating user profile:", error);
   }
 };
 
@@ -203,7 +203,7 @@ export const getGoals = async (userId: string) => {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error("Error fetching goals:", error);
+      console.warn("Warning fetching goals:", error);
     }
   };
   
@@ -222,7 +222,7 @@ export const addGoal = async (data: any) => {
     if (error) throw error;
     return insertedData?.[0]?.id;
   } catch (error) {
-    console.error("Error adding goal:", error);
+    console.warn("Warning adding goal:", error);
   }
 };
 
@@ -234,7 +234,7 @@ export const updateGoal = async (id: string, data: any) => {
       .eq('id', id);
     if (error) throw error;
   } catch (error) {
-    console.error("Error updating goal:", error);
+    console.warn("Warning updating goal:", error);
   }
 };
 
@@ -246,7 +246,7 @@ export const deleteGoal = async (id: string) => {
       .eq('id', id);
     if (error) throw error;
   } catch (error) {
-    console.error("Error deleting goal:", error);
+    console.warn("Warning deleting goal:", error);
   }
 };
 
@@ -261,7 +261,7 @@ export const getPlans = async (userId: string) => {
     if (error) throw error;
     return data || [];
   } catch (error) {
-    console.error("Error fetching plans:", error);
+    console.warn("Warning fetching plans:", error);
   }
 };
 
@@ -280,7 +280,7 @@ export const addPlan = async (data: any) => {
     if (error) throw error;
     return insertedData?.[0]?.id;
   } catch (error) {
-    console.error("Error adding plan:", error);
+    console.warn("Warning adding plan:", error);
   }
 };
 
@@ -293,7 +293,7 @@ export const updatePlan = async (id: string, data: any) => {
       .eq('id', id);
     if (error) throw error;
   } catch (error) {
-    console.error("Error updating plan:", error);
+    console.warn("Warning updating plan:", error);
   }
 };
 
@@ -318,7 +318,7 @@ export const getBusinesses = async (userId: string) => {
       };
     });
   } catch (error) {
-    console.error("Error fetching businesses:", error);
+    console.warn("Warning fetching businesses:", error);
     return [];
   }
 };
@@ -339,7 +339,7 @@ export const createBusiness = async (data: any) => {
     if (error) throw error;
     return insertedData;
   } catch (error) {
-    console.error("Error creating business:", error);
+    console.warn("Warning creating business:", error);
     return null;
   }
 };
@@ -355,7 +355,7 @@ export const getBusinessTransactions = async (businessId: string) => {
     if (error) throw error;
     return data || [];
   } catch (error) {
-    console.error("Error fetching business transactions:", error);
+    console.warn("Warning fetching business transactions:", error);
     return [];
   }
 };
@@ -376,7 +376,7 @@ export const addBusinessTransaction = async (data: any) => {
     if (error) throw error;
     return insertedData;
   } catch (error) {
-    console.error("Error adding business transaction:", error);
+    console.warn("Warning adding business transaction:", error);
     return null;
   }
 };
@@ -392,7 +392,7 @@ export const getProducts = async (businessId: string) => {
     if (error) throw error;
     return data || [];
   } catch (error) {
-    console.error("Error fetching products:", error);
+    console.warn("Warning fetching products:", error);
     return [];
   }
 };
@@ -413,7 +413,7 @@ export const addProduct = async (data: any) => {
     if (error) throw error;
     return insertedData;
   } catch (error) {
-    console.error("Error adding product:", error);
+    console.warn("Warning adding product:", error);
     return null;
   }
 };
@@ -429,7 +429,7 @@ export const getSales = async (businessId: string) => {
     if (error) throw error;
     return data || [];
   } catch (error) {
-    console.error("Error fetching sales:", error);
+    console.warn("Warning fetching sales:", error);
     return [];
   }
 };
@@ -450,7 +450,7 @@ export const recordSale = async (data: any) => {
     if (error) throw error;
     return insertedData;
   } catch (error) {
-    console.error("Error recording sale:", error);
+    console.warn("Warning recording sale:", error);
     return null;
   }
 };
@@ -466,7 +466,7 @@ export const getBusinessDebts = async (businessId: string) => {
     if (error) throw error;
     return data || [];
   } catch (error) {
-    console.error("Error fetching business debts:", error);
+    console.warn("Warning fetching business debts:", error);
     return [];
   }
 };
@@ -487,7 +487,7 @@ export const addBusinessDebt = async (data: any) => {
     if (error) throw error;
     return insertedData;
   } catch (error) {
-    console.error("Error adding business debt:", error);
+    console.warn("Warning adding business debt:", error);
     return null;
   }
 };
@@ -500,7 +500,7 @@ export const deletePlan = async (id: string) => {
       .eq('id', id);
     if (error) throw error;
   } catch (error) {
-    console.error("Error deleting plan:", error);
+    console.warn("Warning deleting plan:", error);
   }
 };
 
@@ -515,7 +515,7 @@ export const getUpcomingPayments = async (userId: string) => {
     if (error) throw error;
     return data || [];
   } catch (error) {
-    console.error("Error fetching upcoming payments:", error);
+    console.warn("Warning fetching upcoming payments:", error);
     return [];
   }
 };
