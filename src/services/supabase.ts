@@ -19,5 +19,21 @@ if (!isValidUrl || !isValidKey) {
 // We use placeholders if keys are missing to prevent the client from throwing an error during initialization
 export const supabase = createClient(
   isValidUrl ? supabaseUrl : 'https://placeholder-ok.supabase.co',
-  isValidKey ? supabaseAnonKey : 'placeholder-key-long-enough-to-not-fail-instantly-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+  isValidKey ? supabaseAnonKey : 'placeholder-key-long-enough-to-not-fail-instantly-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+  {
+    auth: {
+      autoRefreshToken: isValidUrl,
+      persistSession: isValidUrl,
+      detectSessionInUrl: isValidUrl
+    },
+    global: {
+      fetch: isValidUrl ? fetch : async (...args) => {
+        console.warn('Supabase is using mock fetch because credentials are not configured.');
+        return new Response(JSON.stringify([]), { 
+          status: 200, 
+          headers: { 'Content-Type': 'application/json' } 
+        });
+      }
+    }
+  }
 );

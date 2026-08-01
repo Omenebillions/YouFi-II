@@ -126,7 +126,7 @@ export default function BusinessProductList() {
   };
 
   const handleCameraScan = async () => {
-    if (!isPremium && products.length >= productLimit) {
+    if (!isPremium) {
       setShowUpgradePrompt(true);
       return;
     }

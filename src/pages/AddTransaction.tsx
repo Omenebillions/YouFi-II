@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Wallet, Tag, Mic, MicOff, CreditCard, RotateCw } from 'lucide-react';
+import { ArrowLeft, Wallet, Tag, Mic, MicOff, CreditCard, RotateCw, UploadCloud } from 'lucide-react';
 import { addTransaction, fetchTransactions } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
 import { usePrivacy } from '../contexts/PrivacyContext';
@@ -168,8 +168,8 @@ export default function AddTransaction() {
           <ArrowLeft size={20} />
         </button>
         <h1 className="text-lg font-bold text-gray-900">Add Record</h1>
-        <button onClick={() => navigate('/auto-import')} className="px-3 py-1.5 bg-brand-50 text-brand-600 rounded-lg text-xs font-bold border border-brand-100 active:scale-95 transition-transform">
-          Auto Import
+        <button onClick={() => navigate('/auto-import')} className="flex items-center gap-1.5 px-3 py-2 bg-brand-50 text-brand-600 rounded-lg text-xs font-bold border border-brand-100 active:scale-95 transition-transform hover:bg-brand-100">
+          <UploadCloud size={14} /> Scan Bank Alert
         </button>
       </div>
 

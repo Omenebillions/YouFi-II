@@ -73,9 +73,9 @@ export default function CameraScanner({ isOpen, onClose, onScanComplete }: Camer
     if (!videoRef.current || !canvasRef.current) return;
     
     // Quick client limit check
-    if (!isPremium && aiTokens <= 0) {
-       showPaywall('Continuous AI Services');
-       setError('Welcome Pack token limit reached. Please upgrade to Pro for unlimited AI camera receipt reader.');
+    if (!isPremium) {
+       showPaywall('Smart Camera OCR Scanner');
+       setError('Smart Camera OCR is a premium feature. Please upgrade to a paid plan to continue.');
        return;
     }
 

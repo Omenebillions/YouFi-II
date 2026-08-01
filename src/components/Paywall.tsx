@@ -34,7 +34,7 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
             setExchangeRate(data.rates[currencyCode]);
           }
         })
-        .catch(err => console.error("Error fetching exchange rate:", err));
+        .catch(err => console.warn("Exchange rate fetch failed, using default"));
     }
   }, [isOpen, currencyCode]);
 
@@ -180,9 +180,6 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
           ]
         },
         callback: function(response: any) {
-          handleVerification(response);
-        },
-        onSuccess: function(response: any) {
           handleVerification(response);
         },
         onClose: function() {

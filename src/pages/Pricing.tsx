@@ -43,7 +43,7 @@ export default function Pricing() {
             setExchangeRate(data.rates[currencyCode]);
           }
         })
-        .catch(err => console.error("Error fetching exchange rate:", err));
+        .catch(err => console.warn("Exchange rate fetch failed, using default"));
     }
   }, [currencyCode]);
 

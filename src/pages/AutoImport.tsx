@@ -245,6 +245,11 @@ export default function AutoImport() {
     }
 
     if (!file) return;
+    if (!isPremium) {
+      showPaywall('Smart Camera OCR Scanner');
+      setError('Document and Image OCR parsing is a premium feature. Please upgrade to a paid plan to continue.');
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -433,7 +438,7 @@ export default function AutoImport() {
         <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-lg font-bold text-gray-900">Auto Import</h1>
+        <h1 className="text-lg font-bold text-gray-900">Scan Bank Alert</h1>
         <div className="w-4"></div>
       </div>
 
@@ -463,11 +468,11 @@ export default function AutoImport() {
                 <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 mb-4">
                    <UploadCloud size={32} />
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Upload Statement</h3>
-                <p className="text-sm text-gray-500 mb-6 max-w-xs">We support JPEG, PNG, PDF, Excel, and TXT files. Our AI will automatically extract your transactions.</p>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Upload Bank Screenshot</h3>
+                <p className="text-sm text-gray-500 mb-6 max-w-xs">Upload a screenshot of your bank transactions, alert, or statement. Our AI will automatically pull out credits/debits.</p>
                 
                 <label className="bg-brand-600 text-white font-bold py-3 px-6 rounded-xl cursor-pointer hover:bg-brand-700 transition-colors shadow-sm">
-                  Choose File
+                  Choose Image or File
                   <input 
                     type="file" 
                     accept=".jpg,.jpeg,.png,.pdf,.xls,.xlsx,.csv,.txt" 
