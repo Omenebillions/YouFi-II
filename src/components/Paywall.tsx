@@ -4,6 +4,7 @@ import { useNativeBridge } from '../hooks/useNativeBridge';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency } from '../lib/currency';
 import { revenueCat } from '../services/revenueCat';
+import { detectBillingProvider, FREE_TRIAL_DAYS, FREE_TRIAL_MESSAGE, getProviderLabel } from '../lib/billing';
 
 interface PaywallProps {
   isOpen: boolean;
@@ -20,9 +21,10 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<'pro_monthly' | 'pro_yearly' | 'biz_monthly' | 'biz_yearly'>('pro_yearly');
-  const [paymentGateway, setPaymentGateway] = useState<'paystack' | 'revenuecat'>('paystack');
+  const [paymentGateway, setPaymentGateway] = useState<'paystack' | 'lemonsqueezy' | 'revenuecat'>('paystack');
   
   const [exchangeRate, setExchangeRate] = useState<number>(1);
+  const [providerDetected, setProviderDetected] = useState<'paystack' | 'lemonsqueezy'>('lemonsqueezy');
   const currencyCode = userProfile?.currency || 'USD';
 
   useEffect(() => {
@@ -34,9 +36,17 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
             setExchangeRate(data.rates[currencyCode]);
           }
         })
-        .catch(err => console.error("Error fetching exchange rate:", err));
+        .catch(err => console.warn("Exchange rate fetch failed, using default"));
     }
   }, [isOpen, currencyCode]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    detectBillingProvider(userProfile?.country).then((provider) => {
+      setProviderDetected(provider);
+      setPaymentGateway('paystack');
+    });
+  }, [isOpen, userProfile?.country]);
 
   if (!isOpen) return null;
 
@@ -182,9 +192,6 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
         callback: function(response: any) {
           handleVerification(response);
         },
-        onSuccess: function(response: any) {
-          handleVerification(response);
-        },
         onClose: function() {
           setLoading(false);
         },
@@ -211,6 +218,21 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
   const handleUpgrade = async () => {
     if (paymentGateway === 'paystack') {
       await payWithPaystack(selectedPlan);
+      return;
+    }
+
+    if (paymentGateway === 'lemonsqueezy') {
+      // Lemon Squeezy architecture remains available in code, but Paystack is handling all active payments for now.
+      setLoading(true);
+      setError(null);
+      setSuccessMsg(null);
+      try {
+        await payWithPaystack(selectedPlan);
+      } catch (error: any) {
+        setError(error?.message || 'Unable to process Paystack checkout.');
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -306,6 +328,9 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
           <p className="text-xs text-brand-100/90 mt-1.5 leading-relaxed max-w-xs">
             Unlock {featureName} plus native mobile widgets, scans, and absolute sync.
           </p>
+          <p className="text-[11px] text-amber-200 mt-2 font-semibold">
+            {FREE_TRIAL_MESSAGE}
+          </p>
         </div>
 
         <div className="p-6 flex-1 overflow-y-auto">
@@ -373,29 +398,29 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
                 <span className="text-xs font-black text-gray-900">Paystack</span>
               </div>
               <p className="text-[9px] text-gray-400 mt-1 pl-5 font-normal leading-tight">
-                Cards, Bank Transfer, USSD & <span className="font-semibold text-emerald-600">Android Google Pay</span>.
+                Best for Nigerian users with cards, bank transfers, and USSD.
               </p>
-              <span className="absolute top-2 right-2 bg-emerald-500 text-[6px] text-white font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-widest leading-none shadow-sm">Popular</span>
+              <span className="absolute top-2 right-2 bg-emerald-500 text-[6px] text-white font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-widest leading-none shadow-sm">Nigeria</span>
             </button>
 
             <button
               type="button"
-              onClick={() => setPaymentGateway('revenuecat')}
+              onClick={() => setPaymentGateway('lemonsqueezy')}
               className={`p-3 rounded-2xl border text-left transition-all flex flex-col justify-between ${
-                paymentGateway === 'revenuecat'
+                paymentGateway === 'lemonsqueezy'
                   ? 'border-indigo-500 bg-indigo-50/10 text-indigo-950 font-bold shadow-sm ring-1 ring-indigo-500'
                   : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
               }`}
-              id="select-revenuecat-gateway"
+              id="select-lemonsqueezy-gateway"
             >
               <div className="flex items-center gap-2">
-                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${paymentGateway === 'revenuecat' ? 'border-indigo-500' : 'border-gray-300'}`}>
-                  {paymentGateway === 'revenuecat' && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
+                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${paymentGateway === 'lemonsqueezy' ? 'border-indigo-500' : 'border-gray-300'}`}>
+                  {paymentGateway === 'lemonsqueezy' && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
                 </div>
-                <span className="text-xs font-black text-gray-900">Credit Card</span>
+                <span className="text-xs font-black text-gray-900">Lemon Squeezy</span>
               </div>
               <p className="text-[9px] text-gray-400 mt-1 pl-5 font-normal leading-tight">
-                Standard credit cards via RevenueCat billing.
+                Best for international users with secure global checkout.
               </p>
             </button>
           </div>

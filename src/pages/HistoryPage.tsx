@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, Edit2, Check, X, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, RotateCw } from 'lucide-react';
+import { ArrowLeft, Trash2, Edit2, Check, X, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, RotateCw, FileText } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchTransactions, deleteTransaction, updateTransaction, moveToTrash } from '../services/db';
 import { formatCurrency } from '../lib/currency';
 import { parsePersonalDebt, serializePersonalDebt, generateRecurringPayments, RecurringPaymentInstance } from '../lib/debt';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+import CsvImportModal from '../components/CsvImportModal';
 
 export default function HistoryPage() {
   const { type } = useParams<{ type: string }>();
@@ -18,6 +19,7 @@ export default function HistoryPage() {
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [txToDelete, setTxToDelete] = useState<any>(null);
+  const [showCsvImport, setShowCsvImport] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ 
@@ -209,12 +211,19 @@ export default function HistoryPage() {
 
   return (
     <div className="flex flex-col tracking-tight pt-4">
-      <div className="flex items-center justify-between mb-8 pr-12">
-        <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
-          <ArrowLeft size={20} />
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
+            <ArrowLeft size={20} />
+          </button>
+          <h1 className="text-lg font-bold text-gray-900 capitalize">{(!type || type === 'all' || type === 'all_transactions') ? 'All' : type} History{periodDisplay}</h1>
+        </div>
+        <button 
+          onClick={() => setShowCsvImport(true)}
+          className="flex items-center gap-1.5 px-3 py-2 bg-brand-50 text-brand-600 rounded-lg text-xs font-bold border border-brand-100 active:scale-95 transition-transform hover:bg-brand-100"
+        >
+          <FileText size={14} /> Import CSV
         </button>
-        <h1 className="text-lg font-bold text-gray-900 capitalize">{(!type || type === 'all' || type === 'all_transactions') ? 'All' : type} History{periodDisplay}</h1>
-        <div className="w-4"></div>
       </div>
 
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 flex flex-col items-center mb-8">
@@ -569,6 +578,15 @@ export default function HistoryPage() {
         onClose={() => { setShowDeleteModal(false); setTxToDelete(null); }}
         onConfirm={handleDelete}
         itemName={txToDelete ? `${txToDelete.category} - ${formatCurrency(txToDelete.amount, currencyCode)}` : undefined}
+      />
+
+      <CsvImportModal 
+        isOpen={showCsvImport}
+        onClose={() => setShowCsvImport(false)}
+        onImportSuccess={() => {
+          setShowCsvImport(false);
+          loadData();
+        }}
       />
     </div>
   );

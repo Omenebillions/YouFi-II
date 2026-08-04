@@ -38,8 +38,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await handleAuthChange(session?.user ?? null);
         
         if (timeoutId) clearTimeout(timeoutId);
-      } catch (error) {
-        console.error("Auth initialization error:", error);
+      } catch (error: any) {
+        if (error?.message?.includes('Failed to fetch')) {
+          console.warn("Auth initialization warning: Failed to fetch (likely missing or invalid Supabase credentials).");
+        } else {
+          console.warn("Auth initialization error:", error);
+        }
         setLoading(false);
       }
     };
@@ -73,8 +77,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           profile = { id: currentUser.id, ...data };
         }
         setUserProfile(profile);
-      } catch (error) {
-        console.error("Error fetching user profile:", error);
+      } catch (error: any) {
+        console.warn("Warning fetching user profile:", error);
       }
     } else {
       setUserProfile(null);

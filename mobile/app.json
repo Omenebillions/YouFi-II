@@ -37,23 +37,6 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    },
-    "plugins": [
-      "expo-camera",
-      "expo-calendar",
-      [
-        "react-native-purchases",
-        {
-          "publicApiKey": ""
-        }
-      ],
-      [
-        "react-native-google-mobile-ads",
-        {
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
-        }
-      ]
-    ]
+    }
   }
 }

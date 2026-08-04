@@ -96,11 +96,12 @@ function AppInitializer() {
   return null;
 }
 
-import { AdManagerProvider } from './components/AdManager';
+
 
 import { PrivacyProvider } from './contexts/PrivacyContext';
 
 import { UIProvider } from './contexts/UIContext';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 
 export default function App() {
   return (
@@ -109,8 +110,9 @@ export default function App() {
         <PrivacyProvider>
           <NotificationProvider>
             <UIProvider>
+            <PWAInstallPrompt />
             <BrowserRouter>
-              <AdManagerProvider>
+              
                 <AppInitializer />
                 <Routes>
                   <Route path="/login" element={<Login />} />
@@ -145,7 +147,7 @@ export default function App() {
                     <Route path="refundpolicy" element={<RefundPolicy />} />
                   </Route>
                 </Routes>
-              </AdManagerProvider>
+              
             </BrowserRouter>
             </UIProvider>
           </NotificationProvider>

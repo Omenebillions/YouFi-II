@@ -86,7 +86,7 @@ class RevenueCatService {
       const data = await response.json();
       return data.offerings || [];
     } catch (err) {
-      console.error("[RevenueCat] failed to fetch offerings:", err);
+      console.warn("[RevenueCat] failed to fetch offerings. Falling back to mock.");
       return [
         {
           identifier: "premium_plans",
@@ -182,7 +182,7 @@ class RevenueCatService {
       const data = await response.json();
       return data.subscriber || null;
     } catch (err) {
-      console.error("[RevenueCat] Error getting customer info:", err);
+      console.warn("[RevenueCat] Error getting customer info. Falling back to mock.");
       const isSubscribed = localStorage.getItem('youfi_premium') === 'true';
       return {
         entitlements: {

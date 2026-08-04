@@ -28,13 +28,27 @@ CREATE TABLE IF NOT EXISTS public.payment_transactions (
 
 ALTER TABLE public.payment_transactions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view their own transactions"
-  ON public.payment_transactions FOR SELECT
-  USING (auth.uid() = user_id OR auth.role() = 'authenticated');
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'payment_transactions' AND policyname = 'Users can view their own transactions'
+  ) THEN
+    CREATE POLICY "Users can view their own transactions"
+      ON public.payment_transactions FOR SELECT
+      USING (auth.uid() = user_id OR auth.role() = 'authenticated');
+  END IF;
 
-CREATE POLICY "Only admins can insert transactions"
-  ON public.payment_transactions FOR INSERT
-  WITH CHECK (true); -- Backend validates in server code
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'payment_transactions' AND policyname = 'Only admins can insert transactions'
+  ) THEN
+    CREATE POLICY "Only admins can insert transactions"
+      ON public.payment_transactions FOR INSERT
+      WITH CHECK (true); -- Backend validates in server code
+  END IF;
+END
+$$;
 
 -- 3. CREATE AUDIT LOG TABLE
 CREATE TABLE IF NOT EXISTS public.audit_logs (
@@ -52,9 +66,18 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
 
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view their own audit logs"
-  ON public.audit_logs FOR SELECT
-  USING (auth.uid() = user_id OR auth.role() = 'admin');
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'audit_logs' AND policyname = 'Users can view their own audit logs'
+  ) THEN
+    CREATE POLICY "Users can view their own audit logs"
+      ON public.audit_logs FOR SELECT
+      USING (auth.uid() = user_id OR auth.role() = 'admin');
+  END IF;
+END
+$$;
 
 -- 4. CREATE API KEYS TABLE FOR SCALABILITY
 CREATE TABLE IF NOT EXISTS public.api_keys (
@@ -71,9 +94,18 @@ CREATE TABLE IF NOT EXISTS public.api_keys (
 
 ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can manage their own API keys"
-  ON public.api_keys FOR ALL
-  USING (auth.uid() = user_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'api_keys' AND policyname = 'Users can manage their own API keys'
+  ) THEN
+    CREATE POLICY "Users can manage their own API keys"
+      ON public.api_keys FOR ALL
+      USING (auth.uid() = user_id);
+  END IF;
+END
+$$;
 
 -- 5. CREATE SESSION TABLE FOR TRACKING ACTIVE SESSIONS
 CREATE TABLE IF NOT EXISTS public.user_sessions (
@@ -91,9 +123,18 @@ CREATE TABLE IF NOT EXISTS public.user_sessions (
 
 ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view their own sessions"
-  ON public.user_sessions FOR SELECT
-  USING (auth.uid() = user_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'user_sessions' AND policyname = 'Users can view their own sessions'
+  ) THEN
+    CREATE POLICY "Users can view their own sessions"
+      ON public.user_sessions FOR SELECT
+      USING (auth.uid() = user_id);
+  END IF;
+END
+$$;
 
 -- 6. CREATE INDEXES FOR SCALABILITY & PERFORMANCE
 CREATE INDEX IF NOT EXISTS idx_users_email ON public.users(email);
@@ -110,22 +151,45 @@ CREATE INDEX IF NOT EXISTS idx_sessions_active ON public.user_sessions(is_active
 -- 7. UPDATE EXISTING POLICIES FOR BETTER SECURITY
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Users can only access their own transactions" ON public.transactions;
-CREATE POLICY "Users can view their own transactions"
-  ON public.transactions FOR SELECT
-  USING (auth.uid() = user_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'transactions' AND policyname = 'Users can view their own transactions'
+  ) THEN
+    CREATE POLICY "Users can view their own transactions"
+      ON public.transactions FOR SELECT
+      USING (auth.uid() = user_id);
+  END IF;
 
-CREATE POLICY "Users can insert their own transactions"
-  ON public.transactions FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'transactions' AND policyname = 'Users can insert their own transactions'
+  ) THEN
+    CREATE POLICY "Users can insert their own transactions"
+      ON public.transactions FOR INSERT
+      WITH CHECK (auth.uid() = user_id);
+  END IF;
 
-CREATE POLICY "Users can update their own transactions"
-  ON public.transactions FOR UPDATE
-  USING (auth.uid() = user_id);
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'transactions' AND policyname = 'Users can update their own transactions'
+  ) THEN
+    CREATE POLICY "Users can update their own transactions"
+      ON public.transactions FOR UPDATE
+      USING (auth.uid() = user_id);
+  END IF;
 
-CREATE POLICY "Users can delete their own transactions"
-  ON public.transactions FOR DELETE
-  USING (auth.uid() = user_id);
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'transactions' AND policyname = 'Users can delete their own transactions'
+  ) THEN
+    CREATE POLICY "Users can delete their own transactions"
+      ON public.transactions FOR DELETE
+      USING (auth.uid() = user_id);
+  END IF;
+END
+$$;
 
 -- 8. CREATE FUNCTION FOR AUTO-UPDATING TIMESTAMPS
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
@@ -137,29 +201,45 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create triggers for auto-updating timestamps
-DROP TRIGGER IF EXISTS update_users_updated_at ON public.users;
-CREATE TRIGGER update_users_updated_at
-  BEFORE UPDATE ON public.users
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'update_users_updated_at' AND tgrelid = 'public.users'::regclass
+  ) THEN
+    CREATE TRIGGER update_users_updated_at
+      BEFORE UPDATE ON public.users
+      FOR EACH ROW
+      EXECUTE FUNCTION public.update_updated_at_column();
+  END IF;
 
-DROP TRIGGER IF EXISTS update_payment_transactions_updated_at ON public.payment_transactions;
-CREATE TRIGGER update_payment_transactions_updated_at
-  BEFORE UPDATE ON public.payment_transactions
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'update_payment_transactions_updated_at' AND tgrelid = 'public.payment_transactions'::regclass
+  ) THEN
+    CREATE TRIGGER update_payment_transactions_updated_at
+      BEFORE UPDATE ON public.payment_transactions
+      FOR EACH ROW
+      EXECUTE FUNCTION public.update_updated_at_column();
+  END IF;
 
-DROP TRIGGER IF EXISTS update_api_keys_updated_at ON public.api_keys;
-CREATE TRIGGER update_api_keys_updated_at
-  BEFORE UPDATE ON public.api_keys
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'update_api_keys_updated_at' AND tgrelid = 'public.api_keys'::regclass
+  ) THEN
+    CREATE TRIGGER update_api_keys_updated_at
+      BEFORE UPDATE ON public.api_keys
+      FOR EACH ROW
+      EXECUTE FUNCTION public.update_updated_at_column();
+  END IF;
 
-DROP TRIGGER IF EXISTS update_user_sessions_updated_at ON public.user_sessions;
-CREATE TRIGGER update_user_sessions_updated_at
-  BEFORE UPDATE ON public.user_sessions
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'update_user_sessions_updated_at' AND tgrelid = 'public.user_sessions'::regclass
+  ) THEN
+    CREATE TRIGGER update_user_sessions_updated_at
+      BEFORE UPDATE ON public.user_sessions
+      FOR EACH ROW
+      EXECUTE FUNCTION public.update_updated_at_column();
+  END IF;
+END
+$$;
 
 -- 9. CREATE FUNCTION TO LOG AUDIT EVENTS
 CREATE OR REPLACE FUNCTION public.log_audit_event(
