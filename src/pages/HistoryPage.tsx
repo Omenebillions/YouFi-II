@@ -4,7 +4,7 @@ import { ArrowLeft, Trash2, Edit2, Check, X, CheckCircle2, AlertCircle, ChevronD
 import { useAuth } from '../contexts/AuthContext';
 import { fetchTransactions, deleteTransaction, updateTransaction, moveToTrash } from '../services/db';
 import { formatCurrency } from '../lib/currency';
-import { parsePersonalDebt, serializePersonalDebt, generateRecurringPayments, RecurringPaymentInstance } from '../lib/debt';
+import { parsePersonalDebt, serializePersonalDebt, getCleanNote, generateRecurringPayments, RecurringPaymentInstance } from '../lib/debt';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import CsvImportModal from '../components/CsvImportModal';
 
@@ -92,7 +92,7 @@ export default function HistoryPage() {
     setEditForm({
       amount: tx.amount.toString(),
       category: tx.category,
-      note: isDebt ? (debtMeta?.note || '') : (tx.note || ''),
+      note: getCleanNote(tx, debtMeta),
       date: tx.date || new Date().toISOString().split('T')[0],
       type: tx.type || 'expense',
       repaymentDate: isDebt ? (debtMeta?.repaymentDate || '') : '',
@@ -459,10 +459,10 @@ export default function HistoryPage() {
                           )}
                         </h4>
                         
-                        {isDebt ? 
-                          ((debtMeta?.note || tx.note || tx.description) && <p className="text-xs font-medium text-gray-500 mt-0.5">{debtMeta?.note || tx.note || tx.description}</p>) : 
-                          ((tx.note || tx.description) && <p className="text-xs font-medium text-gray-500 mt-0.5">{tx.note || tx.description}</p>)
-                        }
+                        {(() => {
+                          const cleanNote = getCleanNote(tx, debtMeta);
+                          return cleanNote ? <p className="text-xs font-medium text-gray-500 mt-0.5">{cleanNote}</p> : null;
+                        })()}
                         <div className="flex flex-col gap-1 mt-1">
                           {tx.date && (() => {
                               const d = new Date(tx.date);

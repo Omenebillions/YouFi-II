@@ -14,7 +14,7 @@ import {
     ResponsiveContainer, Tooltip
 } from 'recharts';
 import { checkUpcomingPaymentNotifications } from '../lib/notifications';
-import { parsePersonalDebt } from '../lib/debt';
+import { parsePersonalDebt, getCleanNote } from '../lib/debt';
 import { parseBusinessName, serializeBusinessTxCategory } from '../lib/business';
 
 import logo from '../assets/images/youfi_app_logo_1779452869088.png';
@@ -584,7 +584,8 @@ export default function Dashboard() {
               const txAmountFormatted = format(Math.abs(tx.amount));
               const isDebt = tx.type === 'debt';
               const debtMeta = isDebt ? parsePersonalDebt(tx) : null;
-              const displayNote = isDebt ? (debtMeta?.note || 'Debt') : (tx.note || 'Transaction');
+              const cleanNote = getCleanNote(tx, debtMeta);
+              const displayNote = cleanNote || (isDebt ? 'Debt' : 'Transaction');
               
               return (
                 <div key={tx.id} className="flex items-center justify-between">

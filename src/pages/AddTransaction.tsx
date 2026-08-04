@@ -5,7 +5,7 @@ import { addTransaction, fetchTransactions } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { formatCurrency, CURRENCIES } from '../lib/currency';
-import { parsePersonalDebt, serializePersonalDebt, generateRecurringPayments, RecurringPaymentInstance } from '../lib/debt';
+import { parsePersonalDebt, serializePersonalDebt, getCleanNote, generateRecurringPayments, RecurringPaymentInstance } from '../lib/debt';
 import { sanitizeInput } from '../lib/security';
 
 export default function AddTransaction() {
@@ -444,7 +444,8 @@ export default function AddTransaction() {
               const bg = bgs[Math.abs(tx.category.length) % bgs.length];
               const isDebt = tx.type === 'debt';
               const debtMeta = isDebt ? parsePersonalDebt(tx) : null;
-              const displayNote = isDebt ? (debtMeta?.note || 'Debt') : (tx.note || new Date(tx.date).toLocaleDateString('en-GB'));
+              const cleanNote = getCleanNote(tx, debtMeta);
+              const displayNote = cleanNote || (isDebt ? 'Debt' : new Date(tx.date).toLocaleDateString('en-GB'));
 
               return (
                 <div key={tx.id || i} className="flex items-center justify-between">

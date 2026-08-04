@@ -34,7 +34,6 @@ export default function BusinessTransactionList() {
   const [transactionLimit, setTransactionLimit] = useState(() => {
     return Number(localStorage.getItem(`youfi_limit_${businessId}`)) || 20;
   });
-  const [adLoading, setAdLoading] = useState(false);
 
   const fetchTransactionsForUI = async () => {
     if (!businessId || !type || !user) return;
@@ -140,36 +139,6 @@ export default function BusinessTransactionList() {
        console.error("Error saving transaction:", error);
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleWatchAd = async () => {
-    if (adLoading) return;
-    setAdLoading(true);
-    try {
-      if (bridge?.showRewardedAd) {
-        const result = await bridge.showRewardedAd();
-        if (result && result.reward > 0) {
-          const nextLimit = transactionLimit + result.reward;
-          setTransactionLimit(nextLimit);
-          localStorage.setItem(`youfi_limit_${businessId}`, String(nextLimit));
-          alert(`Congratulations! You earned +${result.reward} transactions limit! Total allowed: ${nextLimit}`);
-        } else {
-          alert("Ad was cancelled. Finish watching the video to secure extra transactions.");
-        }
-      } else {
-        const watchSuccess = window.confirm("Watch simulated video ad to gain +15 free SME transaction logs?");
-        if (watchSuccess) {
-          const nextLimit = transactionLimit + 15;
-          setTransactionLimit(nextLimit);
-          localStorage.setItem(`youfi_limit_${businessId}`, String(nextLimit));
-          alert(`Congratulations! Sim completed. You earned +15 transactions limit! Total allowed: ${nextLimit}`);
-        }
-      }
-    } catch (err) {
-      console.error("[Ad Reward Error]:", err);
-    } finally {
-      setAdLoading(false);
     }
   };
 
@@ -498,20 +467,10 @@ export default function BusinessTransactionList() {
                      <AlertTriangle className="text-red-500 mb-3 animate-pulse" size={40} />
                      <h3 className="font-bold text-gray-900 text-lg">Transaction Limit Reached</h3>
                      <p className="text-sm text-gray-500 mt-2 max-w-sm leading-relaxed">
-                        You have logged {transactions.length}/{transactionLimit} free SME transactions for this business. Financed by rewarded ads, watch a short video to unlock more entries!
+                        You have logged {transactions.length}/{transactionLimit} free SME transactions for this business. Upgrade to Premium to increase your limit.
                      </p>
                      
                      <div className="flex flex-col gap-3 w-full mt-6">
-                        <button
-                          type="button"
-                          onClick={handleWatchAd}
-                          disabled={adLoading}
-                          className="bg-brand-600 text-white font-bold py-3.5 rounded-2xl w-full flex items-center justify-center gap-2 hover:bg-brand-700 active:scale-95 transition-all shadow-md active:bg-brand-800 disabled:opacity-50"
-                        >
-                           <Play size={14} fill="white" />
-                           {adLoading ? 'Activating Video...' : 'Watch Video Ad (+15 Free Entries)'}
-                        </button>
-
                         <button
                           type="button"
                           onClick={() => { setShowModal(false); navigate('/profile'); }}

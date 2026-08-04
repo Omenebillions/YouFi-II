@@ -45,8 +45,6 @@ export interface YouFINativeBridge {
   purchasePremium(planId: 'monthly' | 'yearly' | 'business'): Promise<boolean>;
   
   // Rewarded Ads (Free tier only)
-  showRewardedAd(): Promise<{ reward: number }>;
-  showInterstitialAd(): Promise<boolean>;
   
   // Utility
   defaultTransactionLimit: number;
@@ -197,29 +195,6 @@ const createWebViewBridge = (): YouFINativeBridge => {
       return true;
     },
     
-    async showRewardedAd() {
-      console.log('[WebViewBridge] Triggering native showRewardedAd');
-      return new Promise<{ reward: number }>((resolve) => {
-        (window as any)._pendingRewardResolve = resolve;
-        if ((window as any).ReactNativeWebView) {
-          (window as any).ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'showRewardedAd'
-          }));
-        } else {
-          resolve({ reward: 0 });
-        }
-      });
-    },
-    
-    async showInterstitialAd() {
-      console.log('[WebViewBridge] Triggering native showInterstitialAd');
-      if ((window as any).ReactNativeWebView) {
-        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
-          type: 'showInterstitialAd'
-        }));
-      }
-      return true;
-    },
     
     log(message) {
       if ((window as any).ReactNativeWebView) {
@@ -351,22 +326,6 @@ const createWebFallbackBridge = (): YouFINativeBridge => {
       return true;
     },
     
-    async showRewardedAd() {
-      console.log(`[WebBridge] Showing rewarded ad...`);
-      const watchSuccess = window.confirm('Configure Web Sandbox: Watch mock rewarded video ad to earn +20 transactions?');
-      if (watchSuccess) {
-        return { reward: 20 };
-      }
-      return { reward: 0 };
-    },
-
-    async showInterstitialAd() {
-      console.log(`[WebBridge] Showing interstitial ad...`);
-      if (window.confirm('Simulating Interstitial Ad. Did the user finish the ad?')) {
-        return true;
-      }
-      return false;
-    },
     
     log(message) {
       console.log(`[YouFI WebView Log]: ${message}`);
@@ -426,14 +385,6 @@ export function useNativeBridge() {
           if (parsed.type === 'pushToken') {
             console.log('[NativeBridge] Received push token from native:', parsed.token);
             localStorage.setItem('youfi_push_token', parsed.token);
-          }
-          if (parsed.type === 'rewardedAdCompleted') {
-            console.log('[NativeBridge] Received rewarded ad completion from native:', parsed.reward);
-            const reward = parsed.reward || 20;
-            if ((window as any)._pendingRewardResolve) {
-              (window as any)._pendingRewardResolve({ reward });
-              (window as any)._pendingRewardResolve = null;
-            }
           }
         }
       } catch (err) {

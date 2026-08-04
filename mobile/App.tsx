@@ -113,14 +113,6 @@ export default function App() {
           window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scanProductImage' }));
           return null;
         },
-        async showRewardedAd() {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'showRewardedAd' }));
-          return { reward: 0 };
-        },
-        async showInterstitialAd() {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'showInterstitialAd' }));
-          return true;
-        },
         log(message) {
           window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'log', message }));
         }
@@ -130,10 +122,6 @@ export default function App() {
         if (window.__pendingPremiumResolve && message && message.type === 'premiumStatusChanged') {
           window.__pendingPremiumResolve(message.payload?.isPremium ?? false);
           window.__pendingPremiumResolve = null;
-        }
-        if (window.__pendingRewardResolve && message && message.type === 'rewardedAdCompleted') {
-          window.__pendingRewardResolve(message.payload || { reward: 0 });
-          window.__pendingRewardResolve = null;
         }
       };
 

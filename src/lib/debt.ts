@@ -124,3 +124,31 @@ export function serializePersonalDebt(data: PersonalDebtData): string {
     payments: data.payments || []
   });
 }
+
+export function getCleanNote(tx: any, debtMeta?: PersonalDebtData | null): string {
+  if (debtMeta) {
+    const note = (debtMeta.note || '').trim();
+    if (note && !(note.startsWith('{') && note.endsWith('}'))) {
+      return note;
+    }
+    return '';
+  }
+
+  const raw = (tx?.note || tx?.description || '').trim();
+  if (!raw) return '';
+
+  if (raw.startsWith('{') && raw.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.note && typeof parsed.note === 'string') {
+        const clean = parsed.note.trim();
+        if (!clean.startsWith('{')) return clean;
+      }
+      return '';
+    } catch {
+      return '';
+    }
+  }
+
+  return raw;
+}

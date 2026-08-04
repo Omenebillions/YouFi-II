@@ -109,17 +109,6 @@ export class ExpoBridge {
           });
           break;
 
-        case 'showRewardedAd':
-          this.showRewardedAd().then((result) => {
-            this.sendToWeb({ type: 'rewardedAdCompleted', payload: result, callbackId: message.callbackId });
-          });
-          break;
-
-        case 'showInterstitialAd':
-          this.showInterstitialAd().then((success) => {
-            this.sendToWeb({ type: 'interstitialAdCompleted', payload: { success }, callbackId: message.callbackId });
-          });
-          break;
 
         case 'log':
           console.log('[Web Log]', message.message);
@@ -241,14 +230,6 @@ export class ExpoBridge {
 
   async scanProductImage(): Promise<{ name: string; price?: number; details?: string } | null> {
     return this.scanReceipt() ? { name: 'Sample Product', price: 24.99, details: 'Mock OCR result' } : null;
-  }
-
-  async showRewardedAd(): Promise<{ reward: number }> {
-    return { reward: 20 };
-  }
-
-  async showInterstitialAd(): Promise<boolean> {
-    return true;
   }
 }
 

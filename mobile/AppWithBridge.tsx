@@ -191,31 +191,6 @@ export default function App() {
         },
 
         // Ads
-        async showRewardedAd() {
-          return new Promise((resolve) => {
-            window.NativeBridgeCallback = (result) => {
-              resolve(result.payload);
-              delete window.NativeBridgeCallback;
-            };
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'showRewardedAd',
-              callbackId: Date.now().toString()
-            }));
-          });
-        },
-
-        async showInterstitialAd() {
-          return new Promise((resolve) => {
-            window.NativeBridgeCallback = (result) => {
-              resolve(result.payload.success);
-              delete window.NativeBridgeCallback;
-            };
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'showInterstitialAd',
-              callbackId: Date.now().toString()
-            }));
-          });
-        },
 
         // Utility
         defaultTransactionLimit: 20,
