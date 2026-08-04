@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNativeBridge } from '../hooks/useNativeBridge';
 import { formatCurrency } from '../lib/currency';
 import Paywall from '../components/Paywall';
+import { FREE_TRIAL_DAYS, FREE_TRIAL_MESSAGE } from '../lib/billing';
 
 const faqs = [
   {
@@ -120,6 +121,9 @@ export default function Pricing() {
         <p className="text-gray-500 text-sm mt-3 leading-relaxed">
           Unlock state-of-the-art receipt scanning, calendar task sync, and multiple business books. Choose the plan right for your growing vision.
         </p>
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-sm">
+          <span className="font-black">{FREE_TRIAL_DAYS}-day free trial:</span> {FREE_TRIAL_MESSAGE}
+        </div>
 
         {/* Monthly / Yearly Toggle */}
         <div className="flex items-center justify-center gap-3 mt-6">
