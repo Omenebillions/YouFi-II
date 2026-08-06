@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Download, X, Share, PlusSquare, Monitor, Smartphone, CheckCircle2, ExternalLink } from 'lucide-react';
+import { Download, X, Share, PlusSquare, Monitor, Smartphone, CheckCircle2 } from 'lucide-react';
 import { usePWA } from '../hooks/usePWA';
 import logo from '../assets/images/youfi_app_logo_1779452869088.png';
 
@@ -10,16 +10,25 @@ export default function PWAInstallPrompt() {
     deviceType,
     platform,
     browser,
-    canInstallPrompt,
     isPromptDismissed,
     promptInstall,
     dismissPrompt,
   } = usePWA();
 
+  const [showHelperInfo, setShowHelperInfo] = useState(false);
+
   // If already running as an installed PWA / TWA or user dismissed the prompt, do not show float prompt
   if (isInstalled || isPromptDismissed) {
     return null;
   }
+
+  const handleInstallClick = async () => {
+    const success = await promptInstall();
+    if (!success) {
+      // If native browser prompt didn't fire (e.g. inside iframe or browser event not ready), show helper info
+      setShowHelperInfo(true);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -40,8 +49,7 @@ export default function PWAInstallPrompt() {
                   alt="YouFi Logo" 
                   className="w-full h-full object-contain rounded-xl"
                   onError={(e) => {
-                    // Fallback to /logo.png if asset failed
-                    (e.target as HTMLImageElement).src = '/logo.png';
+                    (e.currentTarget as HTMLImageElement).src = '/logo.png';
                   }}
                 />
               </div>
@@ -66,61 +74,46 @@ export default function PWAInstallPrompt() {
             </button>
           </div>
 
-          {/* Conditional Guidance based on OS & Browser */}
-          {canInstallPrompt ? (
-            <button
-              onClick={promptInstall}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98] transition-all text-sm"
+          {/* Primary Action: Direct Install Button */}
+          <button
+            onClick={handleInstallClick}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 px-4 rounded-2xl flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-600/20 active:scale-[0.98] transition-all text-sm cursor-pointer"
+          >
+            <Download size={18} />
+            <span>Install YouFi App</span>
+          </button>
+
+          {/* Helper info fallback if native popup was suppressed by browser or on iOS */}
+          {(showHelperInfo || platform === 'ios') && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="bg-emerald-50/70 rounded-2xl p-3 border border-emerald-100 flex flex-col gap-2 text-xs text-gray-700"
             >
-              <Download size={18} />
-              <span>Install YouFi Now</span>
-            </button>
-          ) : platform === 'ios' ? (
-            <div className="bg-emerald-50/60 rounded-2xl p-3 border border-emerald-100/80 flex flex-col gap-2">
-              <p className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider flex items-center gap-1">
-                <Smartphone size={12} className="text-emerald-600" />
-                <span>To install on iOS (Safari):</span>
-              </p>
-              <div className="flex items-center gap-2 text-xs text-gray-700">
-                <span className="font-bold text-emerald-700">1.</span>
-                <span>Tap Share</span>
-                <Share size={14} className="text-emerald-600 inline shrink-0" />
-                <span>in Safari bottom bar</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-gray-700">
-                <span className="font-bold text-emerald-700">2.</span>
-                <span>Tap</span>
-                <span className="font-bold bg-white px-2 py-0.5 rounded-lg border border-emerald-200 shadow-2xs text-gray-800 flex items-center gap-1 text-[11px]">
-                  Add to Home Screen <PlusSquare size={13} className="inline text-emerald-600" />
-                </span>
-              </div>
-            </div>
-          ) : platform === 'desktop_mac' && browser === 'safari' ? (
-            <div className="bg-emerald-50/60 rounded-2xl p-3 border border-emerald-100/80 flex flex-col gap-2">
-              <p className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider flex items-center gap-1">
-                <Monitor size={12} className="text-emerald-600" />
-                <span>To install on macOS Safari:</span>
-              </p>
-              <p className="text-xs text-gray-700">
-                Click <span className="font-bold text-gray-900">File</span> in Mac menu bar &rarr; Select <span className="font-bold text-emerald-700">Add to Dock</span>.
-              </p>
-            </div>
-          ) : deviceType === 'desktop' ? (
-            <div className="bg-emerald-50/60 rounded-2xl p-3 border border-emerald-100/80 flex flex-col gap-1.5">
-              <p className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider flex items-center gap-1">
-                <Monitor size={12} className="text-emerald-600" />
-                <span>Desktop Browser Installation:</span>
-              </p>
-              <p className="text-xs text-gray-700 leading-snug">
-                Click the <span className="font-bold text-emerald-700">Install App (⊕ or 💻)</span> icon inside your browser address bar at top right.
-              </p>
-            </div>
-          ) : (
-            <div className="bg-emerald-50/60 rounded-2xl p-3 border border-emerald-100/80 flex flex-col gap-1.5">
-              <p className="text-xs text-gray-700 leading-snug">
-                Open browser menu (&vellip;) and choose <span className="font-bold text-emerald-700">Install app</span> or <span className="font-bold text-emerald-700">Add to Home screen</span>.
-              </p>
-            </div>
+              {platform === 'ios' ? (
+                <>
+                  <p className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Smartphone size={12} className="text-emerald-600" />
+                    <span>iOS Safari Installation:</span>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-emerald-700">1.</span>
+                    <span>Tap Share <Share size={14} className="text-emerald-600 inline shrink-0" /> at bottom</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-emerald-700">2.</span>
+                    <span>Select <strong className="bg-white border px-1.5 py-0.5 rounded-md text-[11px] border-emerald-200">Add to Home Screen <PlusSquare size={13} className="inline text-emerald-600" /></strong></span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-start gap-2">
+                  <Monitor size={14} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-gray-700 leading-snug">
+                    If the installer prompt didn't pop up automatically, click the <b>Install App (⊕)</b> button inside your browser address bar at top right.
+                  </p>
+                </div>
+              )}
+            </motion.div>
           )}
         </div>
       </motion.div>

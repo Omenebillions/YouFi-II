@@ -108,6 +108,13 @@ export function usePWA() {
   useEffect(() => {
     detectEnvironment();
 
+    // Check if early window.deferredPWAInstallPrompt exists
+    const earlyPrompt = (window as any).deferredPWAInstallPrompt;
+    if (earlyPrompt) {
+      setDeferredPrompt(earlyPrompt);
+      setPwaState(prev => ({ ...prev, canInstallPrompt: true }));
+    }
+
     // Constant status checking:
     // 1. Listen to media query changes (e.g. if user installs app while browsing)
     const mediaQueryList = window.matchMedia('(display-mode: standalone)');
@@ -124,6 +131,7 @@ export function usePWA() {
     // 2. Listen for 'beforeinstallprompt'
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
+      (window as any).deferredPWAInstallPrompt = e;
       setDeferredPrompt(e);
       setPwaState(prev => ({ ...prev, canInstallPrompt: true }));
     };
@@ -134,6 +142,7 @@ export function usePWA() {
     const handleAppInstalled = () => {
       setPwaState(prev => ({ ...prev, isInstalled: true, canInstallPrompt: false }));
       setDeferredPrompt(null);
+      (window as any).deferredPWAInstallPrompt = null;
       localStorage.removeItem('youfi_pwa_dismissed');
     };
 
@@ -172,14 +181,16 @@ export function usePWA() {
 
   // Method to trigger native install prompt
   const promptInstall = useCallback(async (): Promise<boolean> => {
-    if (!deferredPrompt) {
+    const promptEvent = deferredPrompt || (window as any).deferredPWAInstallPrompt;
+    if (!promptEvent) {
       return false;
     }
 
     try {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
+      promptEvent.prompt();
+      const { outcome } = await promptEvent.userChoice;
       setDeferredPrompt(null);
+      (window as any).deferredPWAInstallPrompt = null;
       setPwaState(prev => ({ ...prev, canInstallPrompt: false }));
       if (outcome === 'accepted') {
         setPwaState(prev => ({ ...prev, isInstalled: true }));

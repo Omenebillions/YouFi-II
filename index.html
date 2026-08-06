@@ -10,10 +10,19 @@
     <!-- Favicon & App Icons -->
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="apple-mobile-web-app-title" content="YouFi" />
     <meta name="application-name" content="YouFi" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#10b981" />
+
+    <script>
+      // Capture beforeinstallprompt event at earliest possible instant
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.deferredPWAInstallPrompt = e;
+      });
+    </script>
 
     <!-- SEO Meta Tags -->
     <title>YouFi - Your Personal AI Financial Co-Pilot</title>

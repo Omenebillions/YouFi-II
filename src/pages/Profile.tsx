@@ -358,38 +358,24 @@ export default function Profile() {
               Install YouFi on your {deviceType === 'mobile' ? 'mobile phone' : 'desktop computer'} for instant launch, offline tracking, and home screen icon access.
             </p>
 
-            {canInstallPrompt ? (
-              <button
-                onClick={promptInstall}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 active:scale-[0.98] transition-all text-sm"
-              >
-                <Download size={16} />
-                <span>Install YouFi App Now</span>
-              </button>
-            ) : platform === 'ios' ? (
-              <div className="bg-emerald-50/60 rounded-2xl p-3 border border-emerald-100/80 text-xs text-gray-700 flex flex-col gap-1.5">
+            <button
+              onClick={async () => {
+                await promptInstall();
+              }}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 px-4 rounded-2xl flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 active:scale-[0.98] transition-all text-sm cursor-pointer"
+            >
+              <Download size={18} />
+              <span>Install YouFi App Now</span>
+            </button>
+
+            {platform === 'ios' && (
+              <div className="bg-emerald-50/60 rounded-2xl p-3 border border-emerald-100/80 text-xs text-gray-700 flex flex-col gap-1.5 mt-1">
                 <span className="font-bold text-emerald-800 text-[11px] uppercase tracking-wider flex items-center gap-1">
                   <Smartphone size={12} className="text-emerald-600" />
-                  <span>iOS Installation Steps:</span>
+                  <span>iOS Safari Installation:</span>
                 </span>
-                <span>1. Open in Safari & tap <Share size={13} className="inline text-emerald-600 shrink-0" /> <b>Share</b></span>
+                <span>1. Tap <Share size={13} className="inline text-emerald-600 shrink-0" /> <b>Share</b> in Safari bottom bar</span>
                 <span>2. Select <span className="bg-white border px-1.5 py-0.5 rounded-md font-bold text-[11px] border-emerald-200">Add to Home Screen <PlusSquare size={12} className="inline text-emerald-600" /></span></span>
-              </div>
-            ) : platform === 'desktop_mac' && browser === 'safari' ? (
-              <div className="bg-emerald-50/60 rounded-2xl p-3 border border-emerald-100/80 text-xs text-gray-700 flex flex-col gap-1">
-                <span className="font-bold text-emerald-800 text-[11px] uppercase tracking-wider flex items-center gap-1">
-                  <Monitor size={12} className="text-emerald-600" />
-                  <span>macOS Safari:</span>
-                </span>
-                <span>Click <b>File</b> in Mac top menu &rarr; select <b>Add to Dock</b>.</span>
-              </div>
-            ) : (
-              <div className="bg-emerald-50/60 rounded-2xl p-3 border border-emerald-100/80 text-xs text-gray-700 flex flex-col gap-1">
-                <span className="font-bold text-emerald-800 text-[11px] uppercase tracking-wider flex items-center gap-1">
-                  <Monitor size={12} className="text-emerald-600" />
-                  <span>Desktop Installation:</span>
-                </span>
-                <span>Click the <b>Install App (⊕)</b> icon in your browser URL bar at top right.</span>
               </div>
             )}
           </div>
