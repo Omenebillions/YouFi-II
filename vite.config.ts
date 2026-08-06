@@ -12,23 +12,41 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        includeAssets: ['logo.png', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
-          name: 'YouFi - Personal Finance',
+          name: 'YouFi - Personal & SME Financial Co-Pilot',
           short_name: 'YouFi',
-          description: 'Personal Finance and SME Manager',
-          theme_color: '#4CAF50',
+          description: 'Personal Finance and SME Manager with AI Co-Pilot',
+          theme_color: '#10b981',
+          background_color: '#ffffff',
           display: 'standalone',
+          orientation: 'portrait-primary',
           start_url: '/',
+          scope: '/',
           icons: [
             {
               src: '/pwa-192x192.png',
               sizes: '192x192',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/pwa-192x192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'maskable'
             },
             {
               src: '/pwa-512x512.png',
               sizes: '512x512',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         },
