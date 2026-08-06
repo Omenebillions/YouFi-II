@@ -119,69 +119,6 @@ async function startServer() {
     response.status(200).send("OK");
   });
 
-  app.post('/api/billing/trial', express.json(), async (req, res) => {
-    const { userId, provider, planKey, country } = req.body;
-    if (!userId) return res.status(400).json({ error: 'userId is required' });
-
-    try {
-      const startedAt = new Date();
-      const endsAt = new Date(startedAt.getTime() + 30 * 24 * 60 * 60 * 1000);
-      const updates: Record<string, any> = {
-        trial_started_at: startedAt.toISOString(),
-        trial_ends_at: endsAt.toISOString(),
-        subscription_status: 'trial',
-        billing_provider: provider || (country && country.toUpperCase() === 'NG' ? 'paystack' : 'lemonsqueezy')
-      };
-
-      const { error } = await supabase.from('users').update(updates).eq('id', userId);
-      if (error) throw error;
-
-      res.json({ success: true, trialEndsAt: endsAt.toISOString() });
-    } catch (error: any) {
-      console.error('[Billing Trial] failed', error);
-      res.status(500).json({ error: error.message || 'Failed to start free trial' });
-    }
-  });
-
-  app.post('/api/billing/activate', express.json(), async (req, res) => {
-    const { userId, provider, planKey, reference, customerId } = req.body;
-    if (!userId) return res.status(400).json({ error: 'userId is required' });
-
-    try {
-      const updates: Record<string, any> = {
-        is_premium: true,
-        premium_updated_at: new Date().toISOString(),
-        premium_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        billing_provider: provider || 'lemonsqueezy',
-        billing_reference: reference || null,
-        billing_customer_id: customerId || null,
-        subscription_status: 'active'
-      };
-
-      const { error } = await supabase.from('users').update(updates).eq('id', userId);
-      if (error) throw error;
-
-      res.json({ success: true, provider });
-    } catch (error: any) {
-      console.error('[Billing Activate] failed', error);
-      res.status(500).json({ error: error.message || 'Failed to activate premium access' });
-    }
-  });
-
-  app.post('/api/lemonsqueezy/webhook', express.json(), async (req, res) => {
-    const event = req.body;
-    if (!event || !event.meta || !event.meta.custom_data) {
-      return res.status(200).send('ignored');
-    }
-
-    const userId = event.meta.custom_data.userId;
-    if (userId) {
-      await supabase.from('users').update({ is_premium: true, billing_provider: 'lemonsqueezy', subscription_status: 'active' }).eq('id', userId);
-    }
-
-    res.status(200).send('ok');
-  });
-
   // Paystack Manual Verification Route
   app.post('/api/paystack/verify', express.json(), async (req, res) => {
     const { reference, userId } = req.body;

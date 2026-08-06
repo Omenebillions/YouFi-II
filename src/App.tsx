@@ -126,6 +126,7 @@ export default function App() {
                     <Route path="insights" element={<Insights />} />
                     <Route path="goals" element={<Goals />} />
                     <Route path="profile" element={<Profile />} />
+                    <Route path="history" element={<HistoryPage />} />
                     <Route path="history/:type" element={<HistoryPage />} />
                     <Route path="business" element={<BusinessList />} />
                     <Route path="business-ideas" element={<BusinessIdeas />} />

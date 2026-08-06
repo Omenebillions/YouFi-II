@@ -34,6 +34,7 @@ export default function BusinessTransactionList() {
   const [transactionLimit, setTransactionLimit] = useState(() => {
     return Number(localStorage.getItem(`youfi_limit_${businessId}`)) || 20;
   });
+  const [adLoading, setAdLoading] = useState(false);
 
   const fetchTransactionsForUI = async () => {
     if (!businessId || !type || !user) return;
@@ -139,6 +140,36 @@ export default function BusinessTransactionList() {
        console.error("Error saving transaction:", error);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleWatchAd = async () => {
+    if (adLoading) return;
+    setAdLoading(true);
+    try {
+      if (bridge?.showRewardedAd) {
+        const result = await bridge.showRewardedAd();
+        if (result && result.reward > 0) {
+          const nextLimit = transactionLimit + result.reward;
+          setTransactionLimit(nextLimit);
+          localStorage.setItem(`youfi_limit_${businessId}`, String(nextLimit));
+          alert(`Congratulations! You earned +${result.reward} transactions limit! Total allowed: ${nextLimit}`);
+        } else {
+          alert("Ad was cancelled. Finish watching the video to secure extra transactions.");
+        }
+      } else {
+        const watchSuccess = window.confirm("Watch simulated video ad to gain +15 free SME transaction logs?");
+        if (watchSuccess) {
+          const nextLimit = transactionLimit + 15;
+          setTransactionLimit(nextLimit);
+          localStorage.setItem(`youfi_limit_${businessId}`, String(nextLimit));
+          alert(`Congratulations! Sim completed. You earned +15 transactions limit! Total allowed: ${nextLimit}`);
+        }
+      }
+    } catch (err) {
+      console.error("[Ad Reward Error]:", err);
+    } finally {
+      setAdLoading(false);
     }
   };
 
@@ -462,27 +493,7 @@ export default function BusinessTransactionList() {
                      <X size={20} />
                   </button>
                </div>
-               {(!isPremium && transactions.length >= transactionLimit && !editingTx) ? (
-                  <div className="flex flex-col items-center text-center p-6 bg-red-50/50 rounded-3xl border border-red-100 mt-2">
-                     <AlertTriangle className="text-red-500 mb-3 animate-pulse" size={40} />
-                     <h3 className="font-bold text-gray-900 text-lg">Transaction Limit Reached</h3>
-                     <p className="text-sm text-gray-500 mt-2 max-w-sm leading-relaxed">
-                        You have logged {transactions.length}/{transactionLimit} free SME transactions for this business. Upgrade to Premium to increase your limit.
-                     </p>
-                     
-                     <div className="flex flex-col gap-3 w-full mt-6">
-                        <button
-                          type="button"
-                          onClick={() => { setShowModal(false); navigate('/profile'); }}
-                          className="bg-amber-500 text-white font-bold py-3.5 rounded-2xl w-full flex items-center justify-center gap-2 hover:bg-amber-600 active:scale-95 transition-all shadow-md active:bg-amber-700"
-                        >
-                           <Sparkles size={14} />
-                           Go Unlimited with Premium
-                        </button>
-                     </div>
-                  </div>
-               ) : (
-                  <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+               <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                      {type === 'all' && (
                        <div className="flex flex-col gap-1.5">
                           <label className="text-xs font-bold text-gray-500 uppercase ml-1">Type</label>
@@ -561,7 +572,6 @@ export default function BusinessTransactionList() {
                               : `Add ${type === 'all' ? (formData.txType === 'income' ? 'Income' : 'Expense') : type as string}`}
                      </button>
                   </form>
-               )}
             </motion.div>
           </>
         )}

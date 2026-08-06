@@ -17,6 +17,24 @@ import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 
 const parseLenderRecurrence = (fullLenderStr: string) => {
   if (!fullLenderStr) return { lender: '', isRecurring: false, frequency: '', duration: '', recurringAmount: 0, payments: [] as any[] };
+  
+  const trimmed = fullLenderStr.trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return {
+        lender: parsed.lender || parsed.name || parsed.note || 'Lender',
+        isRecurring: parsed.isRecurring || false,
+        frequency: parsed.frequency || '',
+        duration: parsed.duration || '',
+        recurringAmount: parsed.recurringAmount || 0,
+        payments: parsed.payments || []
+      };
+    } catch {
+      // fallback
+    }
+  }
+
   const parts = fullLenderStr.split(" | recurring: ");
   if (parts.length > 1) {
     const subParts = parts[1].split(" | duration: ");

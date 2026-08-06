@@ -45,6 +45,8 @@ export interface YouFINativeBridge {
   purchasePremium(planId: 'monthly' | 'yearly' | 'business'): Promise<boolean>;
   
   // Rewarded Ads (Free tier only)
+  showRewardedAd(): Promise<{ reward: number }>;
+  showInterstitialAd(): Promise<boolean>;
   
   // Utility
   defaultTransactionLimit: number;
@@ -195,6 +197,29 @@ const createWebViewBridge = (): YouFINativeBridge => {
       return true;
     },
     
+    async showRewardedAd() {
+      console.log('[WebViewBridge] Triggering native showRewardedAd');
+      return new Promise<{ reward: number }>((resolve) => {
+        (window as any)._pendingRewardResolve = resolve;
+        if ((window as any).ReactNativeWebView) {
+          (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'showRewardedAd'
+          }));
+        } else {
+          resolve({ reward: 0 });
+        }
+      });
+    },
+    
+    async showInterstitialAd() {
+      console.log('[WebViewBridge] Triggering native showInterstitialAd');
+      if ((window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'showInterstitialAd'
+        }));
+      }
+      return true;
+    },
     
     log(message) {
       if ((window as any).ReactNativeWebView) {
@@ -291,29 +316,19 @@ const createWebFallbackBridge = (): YouFINativeBridge => {
     },
     
     async scanReceipt() {
-      console.log('[WebBridge] Simulating Receipt Scanning...');
-      const simulateSuccess = window.confirm('Configure Web Sandbox: Simulate successful receipt scan?\n\nClick OK for high-fidelity scanning simulation ($45.99 at "Supermarket").\nClick Cancel to simulate empty result.');
-      if (simulateSuccess) {
-        return {
-          amount: 45.99,
-          merchant: 'Supermarket',
-          date: new Date().toISOString().split('T')[0]
-        };
-      }
-      return null;
+      return {
+        amount: 45.99,
+        merchant: 'Supermarket',
+        date: new Date().toISOString().split('T')[0]
+      };
     },
 
     async scanProductImage() {
-      console.log('[WebBridge] Simulating Product Camera OCR...');
-      const simulateSuccess = window.confirm('Configure Web Sandbox: Simulate successful optical character recognition of a product?\n\nClick OK to simulate identifying "Premium Steel Flask" with price $24.99.');
-      if (simulateSuccess) {
-        return {
-          name: 'Premium Steel Flask',
-          price: 24.99,
-          details: '1L insulated flask'
-        };
-      }
-      return null;
+      return {
+        name: 'Premium Steel Flask',
+        price: 24.99,
+        details: '1L insulated flask'
+      };
     },
     
     async getPremiumStatus() {
@@ -326,6 +341,13 @@ const createWebFallbackBridge = (): YouFINativeBridge => {
       return true;
     },
     
+    async showRewardedAd() {
+      return { reward: 20 };
+    },
+
+    async showInterstitialAd() {
+      return true;
+    },
     
     log(message) {
       console.log(`[YouFI WebView Log]: ${message}`);
@@ -385,6 +407,14 @@ export function useNativeBridge() {
           if (parsed.type === 'pushToken') {
             console.log('[NativeBridge] Received push token from native:', parsed.token);
             localStorage.setItem('youfi_push_token', parsed.token);
+          }
+          if (parsed.type === 'rewardedAdCompleted') {
+            console.log('[NativeBridge] Received rewarded ad completion from native:', parsed.reward);
+            const reward = parsed.reward || 20;
+            if ((window as any)._pendingRewardResolve) {
+              (window as any)._pendingRewardResolve({ reward });
+              (window as any)._pendingRewardResolve = null;
+            }
           }
         }
       } catch (err) {
