@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Download, X, Share, PlusSquare, Monitor, Smartphone, CheckCircle2 } from 'lucide-react';
 import { usePWA } from '../hooks/usePWA';
-import logo from '../assets/images/youfi_app_logo_1779452869088.png';
 
 export default function PWAInstallPrompt() {
   const {
@@ -45,12 +44,10 @@ export default function PWAInstallPrompt() {
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 p-1.5 shrink-0 shadow-sm overflow-hidden flex items-center justify-center">
                 <img 
-                  src={logo} 
+                  src="/logo.jpeg" 
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/logo.png'; }} 
                   alt="YouFi Logo" 
                   className="w-full h-full object-contain rounded-xl"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = '/logo.png';
-                  }}
                 />
               </div>
               <div>

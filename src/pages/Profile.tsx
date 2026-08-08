@@ -6,7 +6,6 @@ import { useNavigate } from 'react-router-dom';
 import { CURRENCIES } from '../lib/currency';
 import { parseBusinessName } from '../lib/business';
 import { usePWA } from '../hooks/usePWA';
-import logo from '../assets/images/youfi_app_logo_1779452869088.png';
 
 export default function Profile() {
   const { userProfile, user, logout, refreshProfile } = useAuth();
@@ -317,12 +316,10 @@ export default function Profile() {
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 p-1 flex items-center justify-center shrink-0">
               <img 
-                src={logo} 
+                src="/logo.jpeg" 
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/logo.png'; }} 
                 alt="YouFi Logo" 
                 className="w-full h-full object-contain rounded-xl"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/logo.png';
-                }}
               />
             </div>
             <div>

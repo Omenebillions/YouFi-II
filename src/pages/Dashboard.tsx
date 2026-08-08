@@ -18,7 +18,6 @@ import { parsePersonalDebt, getCleanNote } from '../lib/debt';
 import { parseBusinessName, serializeBusinessTxCategory } from '../lib/business';
 import { parseIncomeCategory, parseExpensePlanCategory, isIncomeBudget } from '../lib/expensesPlanner';
 
-import logo from '../assets/images/youfi_app_logo_1779452869088.png';
 import NotificationCenter from '../components/NotificationCenter';
 
 export default function Dashboard() {
@@ -260,7 +259,12 @@ export default function Dashboard() {
       <div className="flex justify-between items-center mb-8 pr-20">
           <div className="flex items-center gap-3">
              <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center p-1 shadow-sm">
-                <img src={logo} alt="YouFi" className="w-full h-full object-contain" />
+                <img 
+                  src="/logo.jpeg" 
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/logo.png'; }} 
+                  alt="YouFi" 
+                  className="w-full h-full object-contain" 
+                />
              </div>
              <div>
                <p className="text-gray-400 font-bold text-[10px] uppercase tracking-widest mb-0.5 leading-none">Welcome back,</p>

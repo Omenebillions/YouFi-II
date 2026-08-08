@@ -8,13 +8,21 @@
     <meta name="theme-color" content="#f9fafb" />
     
     <!-- Favicon & App Icons -->
-    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="canonical" href="https://youfi.app/" />
+
     <meta name="apple-mobile-web-app-title" content="YouFi" />
     <meta name="application-name" content="YouFi" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#10b981" />
+
+    <!-- App Store & Play Store Integration (ASO) -->
+    <meta name="apple-itunes-app" content="app-id=1779452869, app-argument=https://youfi.app" />
+    <meta name="google-play-app" content="app-id=app.youfi.twa" />
 
     <script>
       // Capture beforeinstallprompt event at earliest possible instant
@@ -24,25 +32,49 @@
       });
     </script>
 
-    <!-- SEO Meta Tags -->
-    <title>YouFi - Your Personal AI Financial Co-Pilot</title>
-    <meta name="description" content="Manage your business and personal finances seamlessly with YouFi, your intelligent AI financial co-pilot. Track real-time flows, receive custom automated insights, and monitor plan subscriptions safely." />
-    <meta name="keywords" content="YouFi, fintech, financial co-pilot, artificial intelligence, wealth management, smart tracking, business analytics, secure budgeting" />
-    <meta name="author" content="YouFi App" />
+    <!-- SEO & ASO Meta Tags -->
+    <title>YouFi - Personal & SME Financial AI Co-Pilot</title>
+    <meta name="description" content="YouFi is your all-in-one personal finance manager and SME bookkeeping co-pilot. Track income, expenses, automated invoice generation, business goals, and AI financial coaching seamlessly." />
+    <meta name="keywords" content="YouFi, YouFi app, personal finance manager, SME bookkeeping, AI accountant, expense planner, invoice generator, cashflow tracking, wealth management, business budget, financial co-pilot" />
+    <meta name="author" content="YouFi Financial Technologies" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://youfi.app" />
-    <meta property="og:title" content="YouFi - Your Personal AI Financial Co-Pilot" />
-    <meta property="og:description" content="Manage your business and personal finances seamlessly with YouFi, your intelligent AI financial co-pilot. Track real-time flows, receive custom automated insights, and monitor plan subscriptions safely." />
+    <meta property="og:url" content="https://youfi.app/" />
+    <meta property="og:title" content="YouFi - Personal & SME Financial AI Co-Pilot" />
+    <meta property="og:description" content="YouFi is your all-in-one personal finance manager and SME bookkeeping co-pilot. Track income, expenses, automated invoice generation, business goals, and AI financial coaching." />
     <meta property="og:image" content="/pwa-512x512.png" />
+    <meta property="og:image:alt" content="YouFi App Logo" />
     <meta property="og:site_name" content="YouFi" />
 
-    <!-- Twitter -->
+    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="YouFi - Your Personal AI Financial Co-Pilot" />
-    <meta name="twitter:description" content="Manage your business and personal finances seamlessly with YouFi, your intelligent AI financial co-pilot. Track real-time flows, receive custom automated insights, and monitor plan subscriptions safely." />
+    <meta name="twitter:title" content="YouFi - Personal & SME Financial AI Co-Pilot" />
+    <meta name="twitter:description" content="YouFi is your all-in-one personal finance manager and SME bookkeeping co-pilot. Track income, expenses, automated invoice generation, and AI coaching." />
     <meta name="twitter:image" content="/pwa-512x512.png" />
+
+    <!-- Structured Data (Schema.org JSON-LD for AI Search Crawlers & Web Search) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "YouFi",
+      "operatingSystem": "iOS, Android, Windows, macOS, Linux, Web",
+      "applicationCategory": "FinanceApplication",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "description": "Smart AI-powered personal finance & SME business bookkeeping assistant. Provides cash flow analytics, AI financial coaching, invoice generation, and expense tracking.",
+      "image": "https://youfi.app/pwa-512x512.png",
+      "author": {
+        "@type": "Organization",
+        "name": "YouFi"
+      }
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>

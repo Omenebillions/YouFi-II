@@ -6,9 +6,22 @@ export default function AuthCallback() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const handleSuccess = () => {
+      if (window.opener && window.opener !== window) {
+        try {
+          window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
+          window.close();
+          return;
+        } catch (e) {
+          console.warn('Popup close warning:', e);
+        }
+      }
+      navigate('/', { replace: true });
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' || session) {
-        navigate('/', { replace: true });
+        handleSuccess();
       } else if (event === 'SIGNED_OUT') {
         navigate('/login', { replace: true });
       }
@@ -17,7 +30,7 @@ export default function AuthCallback() {
     // Also check current session just in case it was already loaded
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        navigate('/', { replace: true });
+        handleSuccess();
       }
     });
 
