@@ -7,10 +7,12 @@ export interface PWAState {
   browser: 'chrome' | 'safari' | 'edge' | 'firefox' | 'other';
   canInstallPrompt: boolean;
   isTWA: boolean;
+  isInIframe: boolean;
 }
 
 export function usePWA() {
   const [pwaState, setPwaState] = useState<PWAState>(() => {
+    const inIframe = typeof window !== 'undefined' && window.self !== window.top;
     return {
       isInstalled: false,
       platform: 'desktop_other',
@@ -18,13 +20,14 @@ export function usePWA() {
       browser: 'other',
       canInstallPrompt: false,
       isTWA: false,
+      isInIframe: inIframe,
     };
   });
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPromptDismissed, setIsPromptDismissed] = useState<boolean>(false);
 
-  // Check if currently running as an installed standalone PWA or TWA
+  // Synchronous status checks
   const checkInstalledStatus = useCallback((): boolean => {
     if (typeof window === 'undefined') return false;
 
@@ -41,10 +44,31 @@ export function usePWA() {
     const isTWAReferrer = document.referrer.startsWith('android-app://');
 
     // 4. URL param override
-    const hasPWAParam = window.location.search.includes('display=standalone') || window.location.search.includes('utm_source=homescreen');
+    const hasPWAParam = window.location.search.includes('display=standalone') || 
+                         window.location.search.includes('utm_source=homescreen') ||
+                         window.location.search.includes('source=pwa');
 
     return isStandaloneMQ || isMinimalUIMQ || isFullscreenMQ || isWindowControlsMQ || isIOSStandalone || isTWAReferrer || hasPWAParam;
   }, []);
+
+  // Async status check (includes navigator.getInstalledRelatedApps API)
+  const checkInstalledStatusAsync = useCallback(async (): Promise<boolean> => {
+    if (typeof window === 'undefined') return false;
+
+    if (checkInstalledStatus()) return true;
+
+    if ('getInstalledRelatedApps' in navigator) {
+      try {
+        const relatedApps = await (navigator as any).getInstalledRelatedApps();
+        if (relatedApps && relatedApps.length > 0) {
+          return true;
+        }
+      } catch (err) {
+        // Ignored if API is restricted
+      }
+    }
+    return false;
+  }, [checkInstalledStatus]);
 
   // Detect platform and browser details
   const detectEnvironment = useCallback(() => {
@@ -89,6 +113,7 @@ export function usePWA() {
 
     const isInstalled = checkInstalledStatus();
     const isTWA = document.referrer.startsWith('android-app://');
+    const isInIframe = window.self !== window.top;
 
     // Check localStorage dismissal
     const dismissedAt = localStorage.getItem('youfi_pwa_dismissed');
@@ -102,8 +127,16 @@ export function usePWA() {
       deviceType,
       browser,
       isTWA,
+      isInIframe,
     }));
-  }, [checkInstalledStatus]);
+
+    // Trigger async related apps check
+    checkInstalledStatusAsync().then(installed => {
+      if (installed) {
+        setPwaState(prev => ({ ...prev, isInstalled: true }));
+      }
+    });
+  }, [checkInstalledStatus, checkInstalledStatusAsync]);
 
   useEffect(() => {
     detectEnvironment();
@@ -116,7 +149,7 @@ export function usePWA() {
     }
 
     // Constant status checking:
-    // 1. Listen to media query changes (e.g. if user installs app while browsing)
+    // 1. Listen to media query changes
     const mediaQueryList = window.matchMedia('(display-mode: standalone)');
     const handleMQChange = (e: MediaQueryListEvent) => {
       setPwaState(prev => ({ ...prev, isInstalled: e.matches }));
@@ -148,20 +181,20 @@ export function usePWA() {
 
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    // 4. Periodically verify installed status (every 3s) & on visibility/focus change
-    const intervalId = setInterval(() => {
-      const currentlyInstalled = checkInstalledStatus();
+    // 4. Periodically verify installed status (every 2.5s) & on focus
+    const intervalId = setInterval(async () => {
+      const installed = await checkInstalledStatusAsync();
       setPwaState(prev => {
-        if (prev.isInstalled !== currentlyInstalled) {
-          return { ...prev, isInstalled: currentlyInstalled };
+        if (prev.isInstalled !== installed) {
+          return { ...prev, isInstalled: installed };
         }
         return prev;
       });
-    }, 3000);
+    }, 2500);
 
-    const handleFocus = () => {
-      const currentlyInstalled = checkInstalledStatus();
-      setPwaState(prev => ({ ...prev, isInstalled: currentlyInstalled }));
+    const handleFocus = async () => {
+      const installed = await checkInstalledStatusAsync();
+      setPwaState(prev => ({ ...prev, isInstalled: installed }));
     };
 
     window.addEventListener('focus', handleFocus);
@@ -177,29 +210,37 @@ export function usePWA() {
       document.removeEventListener('visibilitychange', handleFocus);
       clearInterval(intervalId);
     };
-  }, [detectEnvironment, checkInstalledStatus]);
+  }, [detectEnvironment, checkInstalledStatusAsync]);
 
-  // Method to trigger native install prompt
-  const promptInstall = useCallback(async (): Promise<boolean> => {
+  // Method to trigger native install prompt or handle iframe redirection
+  const promptInstall = useCallback(async (): Promise<{ success: boolean; outcome: 'accepted' | 'dismissed' | 'opened_new_tab' | 'manual_instructions' }> => {
+    // If inside an iframe (like AI Studio preview), opening full window allows native browser install prompt to trigger
+    if (typeof window !== 'undefined' && window.self !== window.top) {
+      window.open(window.location.href, '_blank');
+      return { success: true, outcome: 'opened_new_tab' };
+    }
+
     const promptEvent = deferredPrompt || (window as any).deferredPWAInstallPrompt;
     if (!promptEvent) {
-      return false;
+      return { success: false, outcome: 'manual_instructions' };
     }
 
     try {
-      promptEvent.prompt();
-      const { outcome } = await promptEvent.userChoice;
+      await promptEvent.prompt();
+      const choiceResult = await promptEvent.userChoice;
       setDeferredPrompt(null);
       (window as any).deferredPWAInstallPrompt = null;
       setPwaState(prev => ({ ...prev, canInstallPrompt: false }));
-      if (outcome === 'accepted') {
+      if (choiceResult && choiceResult.outcome === 'accepted') {
         setPwaState(prev => ({ ...prev, isInstalled: true }));
-        return true;
+        return { success: true, outcome: 'accepted' };
+      } else {
+        return { success: false, outcome: 'dismissed' };
       }
     } catch (err) {
       console.error('PWA install prompt error:', err);
+      return { success: false, outcome: 'manual_instructions' };
     }
-    return false;
   }, [deferredPrompt]);
 
   const dismissPrompt = useCallback(() => {
@@ -220,5 +261,6 @@ export function usePWA() {
     dismissPrompt,
     resetDismissal,
     checkInstalledStatus,
+    checkInstalledStatusAsync,
   };
 }

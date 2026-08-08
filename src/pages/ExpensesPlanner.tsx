@@ -6,7 +6,7 @@ import { formatCurrency } from '../lib/currency';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { 
   Plus, Trash2, ChevronLeft, ChevronRight, PieChart, AlertCircle, Edit2, 
-  TrendingUp, TrendingDown, Target, ChevronDown, ChevronUp, CheckSquare, Square, CheckCircle2, ListPlus, DollarSign, Wallet
+  TrendingUp, TrendingDown, Target, ChevronDown, ChevronUp, CheckSquare, Square, CheckCircle2, ListPlus, DollarSign, Wallet, RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -382,8 +382,92 @@ export default function ExpensesPlanner() {
     loadBudgets();
   };
 
+  const [isImportingSubs, setIsImportingSubs] = useState(false);
+
   const toggleExpandPlan = (planId: string) => {
     setExpandedPlanIds(prev => ({ ...prev, [planId]: !prev[planId] }));
+  };
+
+  const toggleExpandAllPlans = () => {
+    const allExpanded = expensePlans.length > 0 && expensePlans.every(p => expandedPlanIds[p.id]);
+    const newMap: Record<string, boolean> = {};
+    if (!allExpanded) {
+      expensePlans.forEach(p => { newMap[p.id] = true; });
+    }
+    setExpandedPlanIds(newMap);
+  };
+
+  const handleAutoImportSubscriptions = async () => {
+    if (!user) return;
+    setIsImportingSubs(true);
+    try {
+      const [{ data: upcoming }, { data: living }] = await Promise.all([
+        supabase.from('upcoming_payments').select('*').eq('user_id', user.id),
+        supabase.from('living_expenses').select('*').eq('user_id', user.id)
+      ]);
+
+      const subList: PlanSubItem[] = [];
+
+      (upcoming || []).forEach((up: any) => {
+        subList.push({
+          id: 'up_' + up.id,
+          name: up.title || 'Recurring Payment',
+          amount: Number(up.amount) || 0,
+          completed: false
+        });
+      });
+
+      (living || []).forEach((le: any) => {
+        let amt = Number(le.amount) || 0;
+        if (le.frequency === 'weekly') amt = (amt * 52) / 12;
+        if (le.frequency === 'yearly') amt = amt / 12;
+        subList.push({
+          id: 'le_' + le.id,
+          name: le.name || 'Living Expense',
+          amount: Math.round(amt * 100) / 100,
+          completed: false
+        });
+      });
+
+      if (subList.length === 0) {
+        setErrorNotification("No subscriptions or recurring expenses found in your upcoming payments or living expenses.");
+        setIsImportingSubs(false);
+        return;
+      }
+
+      const totalSubAmt = subList.reduce((sum, s) => sum + s.amount, 0);
+      const existingSubPlan = expensePlans.find(p => p.name.toLowerCase().includes('sub') || p.category === 'Entertainment' || p.category === 'Utilities');
+
+      if (existingSubPlan) {
+        const mergedSubs = [...(existingSubPlan.subItems || [])];
+        subList.forEach(s => {
+          if (!mergedSubs.some(m => m.name.toLowerCase() === s.name.toLowerCase())) {
+            mergedSubs.push(s);
+          }
+        });
+        const newTotal = mergedSubs.reduce((sum, s) => sum + s.amount, 0);
+        const serializedCategory = serializeExpensePlanCategory(existingSubPlan.category, existingSubPlan.name, mergedSubs, existingSubPlan.notes);
+
+        await supabase
+          .from('budgets')
+          .update({ category: serializedCategory, amount: newTotal })
+          .eq('id', existingSubPlan.id);
+      } else {
+        const serializedCategory = serializeExpensePlanCategory('Entertainment', 'Subscriptions & Fixed Bills', subList);
+        await supabase.from('budgets').insert({
+          user_id: user.id,
+          category: serializedCategory,
+          amount: totalSubAmt,
+          period: currentMonthStr
+        });
+      }
+
+      await loadBudgets();
+    } catch (e) {
+      console.error("Failed to auto-import subscriptions", e);
+    } finally {
+      setIsImportingSubs(false);
+    }
   };
 
   return (
@@ -523,12 +607,33 @@ export default function ExpensesPlanner() {
           <p className="text-xs font-medium text-gray-400">Assigned plans and sub-expenses</p>
         </div>
         {expectedIncome > 0 && (
-          <button 
-            onClick={handleOpenAddPlan}
-            className="flex items-center gap-1.5 text-xs font-bold text-white bg-brand-600 px-4 py-2.5 rounded-xl shadow-sm hover:bg-brand-700 transition-colors active:scale-95"
-          >
-            <Plus size={14} /> Add Plan
-          </button>
+          <div className="flex items-center gap-1.5">
+            {expensePlans.length > 0 && (
+              <button 
+                onClick={toggleExpandAllPlans}
+                className="flex items-center gap-1 text-xs font-bold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 px-2.5 py-2.5 rounded-xl transition-colors active:scale-95 shadow-2xs cursor-pointer"
+                title="Expand or collapse all dropdown views"
+              >
+                <ChevronDown size={14} className={expensePlans.every(p => expandedPlanIds[p.id]) ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                <span>{expensePlans.every(p => expandedPlanIds[p.id]) ? 'Collapse' : 'Expand All Subs'}</span>
+              </button>
+            )}
+            <button 
+              onClick={handleAutoImportSubscriptions}
+              disabled={isImportingSubs}
+              className="flex items-center gap-1 text-xs font-bold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 px-3 py-2.5 rounded-xl transition-colors active:scale-95 cursor-pointer"
+              title="Auto-import active recurring subscriptions and living expenses"
+            >
+              <RefreshCw size={14} className={isImportingSubs ? 'animate-spin' : ''} />
+              {isImportingSubs ? 'Importing...' : 'Import Subs'}
+            </button>
+            <button 
+              onClick={handleOpenAddPlan}
+              className="flex items-center gap-1 text-xs font-bold text-white bg-brand-600 px-3 py-2.5 rounded-xl shadow-sm hover:bg-brand-700 transition-colors active:scale-95 cursor-pointer"
+            >
+              <Plus size={14} /> Add Plan
+            </button>
+          </div>
         )}
       </div>
 
@@ -648,6 +753,27 @@ export default function ExpensesPlanner() {
                       className={`h-full rounded-full transition-all duration-700 ease-out ${colorClass}`}
                       style={{ width: `${Math.min(planPercentage, 100)}%` }}
                     />
+                  </div>
+
+                  {/* Dropdown Toggle Button Bar */}
+                  <div className="mt-3.5 pt-2 border-t border-gray-100/80">
+                    <button 
+                      onClick={() => toggleExpandPlan(plan.id)}
+                      className="w-full flex items-center justify-between text-xs font-bold py-2 px-3 bg-gray-50 hover:bg-gray-100/80 rounded-xl transition-all text-gray-700 active:scale-[0.99] border border-gray-100"
+                    >
+                      <span className="flex items-center gap-1.5 text-brand-700">
+                        <ListPlus size={14} />
+                        <span>
+                          {plan.subItems && plan.subItems.length > 0 
+                            ? `Dropdown View: ${plan.subItems.length} Sub-item(s) / Subscription(s)` 
+                            : 'Dropdown View: Add Sub-items / Subscriptions'}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-1 text-brand-600 font-bold text-[11px]">
+                        {isExpanded ? 'Hide Dropdown' : 'View Dropdown'}
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </span>
+                    </button>
                   </div>
                 </div>
 

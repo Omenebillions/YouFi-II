@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Brain, Sparkles, TrendingUp, AlertCircle, Target, Briefcase, ChevronRight } from 'lucide-react';
+import { Send, Brain, Sparkles, TrendingUp, AlertCircle, Target, Briefcase, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePremium } from '../contexts/PremiumContext';
+import { useNavigate } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import { fetchTransactions, getBusinesses, getGoals, getUpcomingPayments } from '../services/db';
 
 export default function Coach() {
   const { userProfile, user } = useAuth();
   const { isPremium, aiTokens, showPaywall, refreshAITokens } = usePremium();
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<{role: 'user'|'model', text: string}[]>([
     { role: 'model', text: "Hi there! I'm your YouFi AI Advisor. I have access to your personal and business financials. Choose a topic below or type your question!" }
   ]);
@@ -145,6 +147,14 @@ While I cannot generate real-time AI responses without an internet connection, h
   if (!isPremium && aiTokens <= 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[75vh] p-6 text-center animate-in fade-in duration-300">
+        <div className="w-full max-w-xs flex justify-start mb-4">
+          <button 
+            onClick={() => navigate('/dashboard')} 
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+          >
+            <ArrowLeft size={16} /> Exit AI Advisor
+          </button>
+        </div>
         <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-500 flex items-center justify-center mb-5 border border-amber-100 shadow-inner">
           <Brain size={32} className="animate-pulse" />
         </div>
@@ -154,13 +164,21 @@ While I cannot generate real-time AI responses without an internet connection, h
         </p>
         <button
           onClick={() => showPaywall('Continuous AI Services')}
-          className="mt-6 px-6 py-3.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-black rounded-2xl shadow-lg shadow-brand-600/20 active:scale-95 transition-all w-full max-w-xs"
+          className="mt-6 px-6 py-3.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-black rounded-2xl shadow-lg shadow-brand-600/20 active:scale-95 transition-all w-full max-w-xs cursor-pointer"
         >
           Upgrade to Pro for Unlimited AI Advisory
         </button>
       </div>
     );
   }
+
+  const handleExit = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/dashboard');
+    }
+  };
 
   return (
     <div className="flex flex-col h-full flex-1 relative pt-0">
@@ -172,20 +190,37 @@ While I cannot generate real-time AI responses without an internet connection, h
           </div>
           <button 
             onClick={() => showPaywall('Continuous AI Services')}
-            className="text-[9px] bg-brand-600 hover:bg-brand-700 font-bold text-white px-2.5 py-0.5 rounded-full transition-all shrink-0 active:scale-95 shadow-sm"
+            className="text-[9px] bg-brand-600 hover:bg-brand-700 font-bold text-white px-2.5 py-0.5 rounded-full transition-all shrink-0 active:scale-95 shadow-sm cursor-pointer"
           >
             Upgrade
           </button>
         </div>
       )}
-      <div className="bg-[#f8f9fc]/80 backdrop-blur-md pt-4 pb-4 px-4 pr-12 sticky top-0 z-10 flex items-center gap-3 border-b border-gray-100">
-        <div className="w-10 h-10 bg-brand-50 rounded-full flex items-center justify-center text-brand-600">
-           <Brain size={22} />
+      <div className="bg-[#f8f9fc]/80 backdrop-blur-md pt-4 pb-4 px-4 sticky top-0 z-10 flex items-center justify-between border-b border-gray-100">
+        <div className="flex items-center gap-2.5">
+          <button 
+            onClick={handleExit} 
+            className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-gray-700 hover:text-gray-900 hover:bg-gray-50 transition-colors shadow-xs shrink-0 cursor-pointer text-xs font-bold"
+            title="Exit AI Advisor"
+            aria-label="Exit AI Advisor"
+          >
+            <ArrowLeft size={16} />
+            <span>Exit</span>
+          </button>
+          <div className="w-9 h-9 bg-brand-50 rounded-full flex items-center justify-center text-brand-600 shrink-0">
+             <Brain size={20} />
+          </div>
+          <div className="flex-1 min-w-0">
+             <h1 className="text-base font-bold text-gray-900 leading-tight truncate">YouFi AI Advisor</h1>
+             <p className="text-[10px] text-brand-600 font-medium truncate">Full Financial Access • MBA Level</p>
+          </div>
         </div>
-        <div>
-           <h1 className="text-lg font-bold text-gray-900 leading-tight">YouFi AI Advisor</h1>
-           <p className="text-xs text-brand-600 font-medium">Full Financial Access • MBA Level</p>
-        </div>
+        <button
+          onClick={handleExit}
+          className="text-xs font-bold text-gray-500 hover:text-gray-900 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+        >
+          Close ✕
+        </button>
       </div>
            <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6 pb-24">
         {messages.map((msg, idx) => (

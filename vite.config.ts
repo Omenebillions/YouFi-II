@@ -12,6 +12,9 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        devOptions: {
+          enabled: true
+        },
         includeAssets: [
           'logo.jpeg',
           'logo.png',
@@ -33,8 +36,33 @@ export default defineConfig(({mode}) => {
           background_color: '#ffffff',
           display: 'standalone',
           orientation: 'portrait-primary',
-          start_url: '/',
+          start_url: '/?source=pwa',
           scope: '/',
+          categories: ['finance', 'business', 'productivity'],
+          prefer_related_applications: false,
+          related_applications: [
+            {
+              platform: 'play',
+              id: 'app.youfi.twa',
+              url: 'https://play.google.com/store/apps/details?id=app.youfi.twa'
+            }
+          ],
+          shortcuts: [
+            {
+              name: 'Dashboard',
+              short_name: 'Dashboard',
+              description: 'Open YouFi Financial Dashboard',
+              url: '/?source=pwa_shortcut',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+            },
+            {
+              name: 'Business & Invoices',
+              short_name: 'Invoices',
+              description: 'Manage Business Invoices',
+              url: '/business-invoices?source=pwa_shortcut',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+            }
+          ],
           icons: [
             {
               src: '/pwa-192x192.png',
