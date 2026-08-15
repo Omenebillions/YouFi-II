@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut, User, DollarSign, Save, Trash2, Store, Briefcase } from 'lucide-react';
+import { LogOut, User, DollarSign, Save, Trash2, Store, Briefcase, Smartphone, Download, CheckCircle2, Share, PlusSquare, Monitor } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useNavigate } from 'react-router-dom';
 import { CURRENCIES } from '../lib/currency';
 import { parseBusinessName } from '../lib/business';
+import { usePWA } from '../hooks/usePWA';
 
 export default function Profile() {
   const { userProfile, user, logout, refreshProfile } = useAuth();
   const navigate = useNavigate();
+  const { isInstalled, isTWA, deviceType, platform, browser, canInstallPrompt, promptInstall } = usePWA();
   const [income, setIncome] = useState(userProfile?.income?.toString() || '0');
   const [currency, setCurrency] = useState(userProfile?.currency || 'USD');
   const [loading, setLoading] = useState(false);
@@ -308,6 +310,75 @@ export default function Profile() {
         </div>
       )}
       
+      {/* App Installation & PWA Status */}
+      <div className="bg-white rounded-3xl p-6 shadow-sm border border-emerald-100/80 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 p-1 flex items-center justify-center shrink-0">
+              <img 
+                src="/logo.jpeg" 
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/logo.png'; }} 
+                alt="YouFi Logo" 
+                className="w-full h-full object-contain rounded-xl"
+              />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-gray-900">App Installation & Status</h3>
+              <p className="text-[11px] text-gray-500 font-medium">Desktop & Mobile PWA / TWA</p>
+            </div>
+          </div>
+          {isInstalled ? (
+            <span className="bg-emerald-100 text-emerald-800 text-xs font-extrabold px-3 py-1 rounded-full flex items-center gap-1 shadow-2xs">
+              <CheckCircle2 size={13} className="text-emerald-600" />
+              <span>Installed</span>
+            </span>
+          ) : (
+            <span className="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full">
+              Browser Mode
+            </span>
+          )}
+        </div>
+
+        {isInstalled ? (
+          <div className="bg-emerald-50/70 rounded-2xl p-4 border border-emerald-100 text-xs text-emerald-900 flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 font-bold text-emerald-800">
+              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+              <span>YouFi is active in App Mode</span>
+            </div>
+            <p className="text-[11px] text-emerald-700 leading-relaxed">
+              Running in {isTWA ? 'Android TWA Shell' : 'Standalone App'} mode on your {deviceType === 'mobile' ? 'mobile phone' : 'desktop'}. You have fast offline access, crisp full-screen views, and caching enabled.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-gray-600 leading-relaxed font-medium">
+              Install YouFi on your {deviceType === 'mobile' ? 'mobile phone' : 'desktop computer'} for instant launch, offline tracking, and home screen icon access.
+            </p>
+
+            <button
+              onClick={async () => {
+                await promptInstall();
+              }}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 px-4 rounded-2xl flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 active:scale-[0.98] transition-all text-sm cursor-pointer"
+            >
+              <Download size={18} />
+              <span>Install YouFi App Now</span>
+            </button>
+
+            {platform === 'ios' && (
+              <div className="bg-emerald-50/60 rounded-2xl p-3 border border-emerald-100/80 text-xs text-gray-700 flex flex-col gap-1.5 mt-1">
+                <span className="font-bold text-emerald-800 text-[11px] uppercase tracking-wider flex items-center gap-1">
+                  <Smartphone size={12} className="text-emerald-600" />
+                  <span>iOS Safari Installation:</span>
+                </span>
+                <span>1. Tap <Share size={13} className="inline text-emerald-600 shrink-0" /> <b>Share</b> in Safari bottom bar</span>
+                <span>2. Select <span className="bg-white border px-1.5 py-0.5 rounded-md font-bold text-[11px] border-emerald-200">Add to Home Screen <PlusSquare size={12} className="inline text-emerald-600" /></span></span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* System Settings */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-6">
         <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">

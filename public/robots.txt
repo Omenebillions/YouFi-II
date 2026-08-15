@@ -1,0 +1,47 @@
+# YouFi - Robots.txt for Search Engines, AI Crawlers, App Store & Play Store Indexers
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /auth/
+
+# AI & Search Engine Crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Anthropic-ai
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+User-agent: Baiduspider
+Allow: /
+
+User-agent: Yandex
+Allow: /
+
+Sitemap: https://youfi.app/sitemap.xml

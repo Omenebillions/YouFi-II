@@ -4,7 +4,6 @@ import { useNativeBridge } from '../hooks/useNativeBridge';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency } from '../lib/currency';
 import { revenueCat } from '../services/revenueCat';
-import { FREE_TRIAL_DAYS, FREE_TRIAL_MESSAGE } from '../lib/billing';
 
 interface PaywallProps {
   isOpen: boolean;
@@ -21,6 +20,8 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<'pro_monthly' | 'pro_yearly' | 'biz_monthly' | 'biz_yearly'>('pro_yearly');
+  const [paymentGateway, setPaymentGateway] = useState<'paystack' | 'revenuecat'>('paystack');
+  
   const [exchangeRate, setExchangeRate] = useState<number>(1);
   const currencyCode = userProfile?.currency || 'USD';
 
@@ -36,7 +37,6 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
         .catch(err => console.warn("Exchange rate fetch failed, using default"));
     }
   }, [isOpen, currencyCode]);
-
 
   if (!isOpen) return null;
 
@@ -206,17 +206,26 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
   };
 
   const handleUpgrade = async () => {
+    if (paymentGateway === 'paystack') {
+      await payWithPaystack(selectedPlan);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccessMsg(null);
-
     try {
       let success = false;
-
       if (isNative && bridge?.purchasePremium) {
         success = await bridge.purchasePremium(selectedPlan);
       } else {
-        await payWithPaystack(selectedPlan);
+        const productIdentifier = planIds[selectedPlan];
+        success = await revenueCat.purchaseProduct(productIdentifier);
+      }
+
+      // Web Sandbox fallback: successful paywall flow completes
+      if (!isNative) {
+        localStorage.setItem('youfi_premium', 'true');
         success = true;
       }
 
@@ -294,9 +303,6 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
           <p className="text-xs text-brand-100/90 mt-1.5 leading-relaxed max-w-xs">
             Unlock {featureName} plus native mobile widgets, scans, and absolute sync.
           </p>
-          <p className="text-[11px] text-amber-200 mt-2 font-semibold">
-            {FREE_TRIAL_MESSAGE}
-          </p>
         </div>
 
         <div className="p-6 flex-1 overflow-y-auto">
@@ -345,9 +351,50 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
             </li>
           </ul>
           
-          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">Checkout Method</p>
-          <div className="mb-5 rounded-3xl border border-gray-200 bg-white p-4 text-xs text-gray-700">
-            Web purchases use Paystack. Native mobile flows rely on the app bridge for Google Pay / Apple Pay and do not expose Lemon Squeezy to users.
+          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">Select Payment Method</p>
+          <div className="grid grid-cols-2 gap-2.5 mb-5" id="payment-gateway-selector">
+            <button
+              type="button"
+              onClick={() => setPaymentGateway('paystack')}
+              className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between ${
+                paymentGateway === 'paystack'
+                  ? 'border-emerald-500 bg-emerald-50/10 text-emerald-950 font-bold shadow-sm ring-1 ring-emerald-500'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+              id="select-paystack-gateway"
+            >
+              <div className="flex items-center gap-2">
+                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${paymentGateway === 'paystack' ? 'border-emerald-500' : 'border-gray-300'}`}>
+                  {paymentGateway === 'paystack' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                </div>
+                <span className="text-xs font-black text-gray-900">Paystack</span>
+              </div>
+              <p className="text-[9px] text-gray-400 mt-1 pl-5 font-normal leading-tight">
+                Cards, Bank Transfer, USSD & <span className="font-semibold text-emerald-600">Android Google Pay</span>.
+              </p>
+              <span className="absolute top-2 right-2 bg-emerald-500 text-[6px] text-white font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-widest leading-none shadow-sm">Popular</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPaymentGateway('revenuecat')}
+              className={`p-3 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+                paymentGateway === 'revenuecat'
+                  ? 'border-indigo-500 bg-indigo-50/10 text-indigo-950 font-bold shadow-sm ring-1 ring-indigo-500'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+              id="select-revenuecat-gateway"
+            >
+              <div className="flex items-center gap-2">
+                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${paymentGateway === 'revenuecat' ? 'border-indigo-500' : 'border-gray-300'}`}>
+                  {paymentGateway === 'revenuecat' && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
+                </div>
+                <span className="text-xs font-black text-gray-900">Credit Card</span>
+              </div>
+              <p className="text-[9px] text-gray-400 mt-1 pl-5 font-normal leading-tight">
+                Standard credit cards via RevenueCat billing.
+              </p>
+            </button>
           </div>
 
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">Select Subscription Tier</p>

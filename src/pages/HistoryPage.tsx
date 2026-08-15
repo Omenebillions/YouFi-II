@@ -1,6 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, Edit2, Check, X, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, RotateCw, FileText } from 'lucide-react';
+import { 
+  ArrowLeft, Trash2, Edit2, Check, X, CheckCircle2, AlertCircle, 
+  ChevronDown, ChevronUp, RotateCw, FileText, Search, Calendar, 
+  ArrowUpDown, Filter, SlidersHorizontal, RefreshCw
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchTransactions, deleteTransaction, updateTransaction, moveToTrash } from '../services/db';
 import { formatCurrency } from '../lib/currency';
@@ -9,13 +13,34 @@ import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import CsvImportModal from '../components/CsvImportModal';
 
 export default function HistoryPage() {
-  const { type } = useParams<{ type: string }>();
+  const { type: urlType } = useParams<{ type: string }>();
   const navigate = useNavigate();
   const { user, userProfile } = useAuth();
   
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [allTransactions, setAllTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
+
+  // Filtering and Search State
+  const initialType = (urlType && ['debt', 'expense', 'income', 'all'].includes(urlType.toLowerCase())) 
+    ? (urlType.toLowerCase() === 'expenses' ? 'expense' : urlType.toLowerCase()) 
+    : 'all';
+
+  const [activeType, setActiveType] = useState<string>(initialType);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlPeriod = urlParams.get('period');
+
+  const initialPreset = urlPeriod === 'weekly' ? 'this_week' 
+    : urlPeriod === 'monthly' ? 'this_month' 
+    : urlPeriod === 'yearly' ? 'this_year' 
+    : 'all';
+
+  const [datePreset, setDatePreset] = useState<string>(initialPreset);
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [sortBy, setSortBy] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'>('date_desc');
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [txToDelete, setTxToDelete] = useState<any>(null);
@@ -39,40 +64,117 @@ export default function HistoryPage() {
 
   const currencyCode = userProfile?.currency || 'USD';
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const period = urlParams.get('period');
-
   const loadData = async () => {
     if (!user) return;
     setLoading(true);
     const txs = await fetchTransactions(user.id);
     if (txs) {
-      let filteredTxs = txs;
-      
-      if (type && type !== 'all' && type !== 'all_transactions') {
-        filteredTxs = filteredTxs.filter(t => t.type === type);
-      }
-
-      const now = new Date();
-      if (period === 'weekly') {
-          const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          filteredTxs = filteredTxs.filter(t => t.date && new Date(t.date) >= oneWeekAgo);
-      } else if (period === 'monthly') {
-          const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-          filteredTxs = filteredTxs.filter(t => t.date && new Date(t.date) >= oneMonthAgo);
-      } else if (period === 'yearly') {
-          const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-          filteredTxs = filteredTxs.filter(t => t.date && new Date(t.date) >= oneYearAgo);
-      }
-
-      setTransactions(filteredTxs);
+      setAllTransactions(txs);
     }
     setLoading(false);
   };
 
   useEffect(() => {
     loadData();
-  }, [user, type]);
+  }, [user]);
+
+  useEffect(() => {
+    if (urlType) {
+      const parsed = urlType.toLowerCase() === 'expenses' ? 'expense' : urlType.toLowerCase();
+      if (['debt', 'expense', 'income', 'all'].includes(parsed)) {
+        setActiveType(parsed);
+      }
+    }
+  }, [urlType]);
+
+  // Client-side Filtered Transactions
+  const filteredTransactions = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    let result = allTransactions.filter(tx => {
+      // 1. Type Filter
+      if (activeType !== 'all') {
+        if (activeType === 'expense' && tx.type !== 'expense') return false;
+        if (activeType === 'income' && tx.type !== 'income') return false;
+        if (activeType === 'debt' && tx.type !== 'debt') return false;
+      }
+
+      // 2. Search Query Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const isDebt = tx.type === 'debt';
+        const debtMeta = isDebt ? parsePersonalDebt(tx) : null;
+        const cleanNote = getCleanNote(tx, debtMeta);
+
+        const catMatch = tx.category?.toLowerCase().includes(q);
+        const noteMatch = (cleanNote?.toLowerCase().includes(q)) || (tx.note?.toLowerCase().includes(q));
+        const amtMatch = tx.amount?.toString().includes(q);
+        const dateMatch = tx.date?.includes(q);
+        const statusMatch = isDebt && debtMeta?.status?.toLowerCase().includes(q);
+
+        if (!catMatch && !noteMatch && !amtMatch && !dateMatch && !statusMatch) {
+          return false;
+        }
+      }
+
+      // 3. Date Range Filter
+      if (tx.date) {
+        const txDateStr = tx.date.split('T')[0];
+        const txDate = new Date(txDateStr);
+
+        if (datePreset === 'today') {
+          if (txDateStr !== todayStr) return false;
+        } else if (datePreset === 'this_week') {
+          const startOfWeek = new Date(now);
+          startOfWeek.setDate(now.getDate() - now.getDay());
+          startOfWeek.setHours(0,0,0,0);
+          if (txDate < startOfWeek) return false;
+        } else if (datePreset === 'this_month') {
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          if (txDate < startOfMonth) return false;
+        } else if (datePreset === 'last_month') {
+          const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+          if (txDate < startOfLastMonth || txDate > endOfLastMonth) return false;
+        } else if (datePreset === 'this_year') {
+          const startOfYear = new Date(now.getFullYear(), 0, 1);
+          if (txDate < startOfYear) return false;
+        } else if (datePreset === 'custom') {
+          if (startDate && txDateStr < startDate) return false;
+          if (endDate && txDateStr > endDate) return false;
+        }
+      }
+
+      return true;
+    });
+
+    // 4. Sorting
+    return result.sort((a, b) => {
+      if (sortBy === 'date_desc') return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
+      if (sortBy === 'date_asc') return new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime();
+      if (sortBy === 'amount_desc') return Number(b.amount) - Number(a.amount);
+      if (sortBy === 'amount_asc') return Number(a.amount) - Number(b.amount);
+      return 0;
+    });
+  }, [allTransactions, activeType, searchQuery, datePreset, startDate, endDate, sortBy]);
+
+  // Category counts for quick badges
+  const counts = useMemo(() => {
+    return {
+      all: allTransactions.length,
+      income: allTransactions.filter(t => t.type === 'income').length,
+      expense: allTransactions.filter(t => t.type === 'expense').length,
+      debt: allTransactions.filter(t => t.type === 'debt').length
+    };
+  }, [allTransactions]);
+
+  // Calculations for filtered result set
+  const filteredMoneyIn = filteredTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0);
+  const filteredExpenses = filteredTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Number(t.amount), 0);
+  const filteredUnpaidDebts = filteredTransactions.filter(t => t.type === 'debt' && parsePersonalDebt(t).status !== 'paid').reduce((acc, t) => acc + Number(t.amount), 0);
+  const filteredMoneyOut = filteredExpenses;
+  const filteredNetBalance = filteredMoneyIn - filteredMoneyOut;
 
   const handleDelete = async () => {
     if (!txToDelete) return;
@@ -139,7 +241,6 @@ export default function HistoryPage() {
     const debtMeta = parsePersonalDebt(tx);
     const newStatus = debtMeta.status === 'paid' ? 'unpaid' : 'paid';
     
-    // Also toggle all individual payment statuses to match parent if toggled as a whole
     const updatedPayments = debtMeta.payments?.map(p => ({
       ...p,
       status: newStatus as 'unpaid' | 'paid'
@@ -171,7 +272,6 @@ export default function HistoryPage() {
       return p;
     });
 
-    // Check if ALL payments are marked as paid. If so, parent is marked paid. Otherwise unpaid.
     const allPaid = updatedPayments.every((p: any) => p.status === 'paid');
     const updatedStatus = allPaid ? 'paid' : 'unpaid';
 
@@ -189,82 +289,241 @@ export default function HistoryPage() {
     loadData();
   };
 
-  const baseBalance = (!type || type === 'all' || type === 'all_transactions') && !period ? (userProfile?.income || 0) : 0;
-
-  const totalMoneyIn = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0) + baseBalance;
-  const totalMoneyOut = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0) + 
-                        transactions.filter(t => t.type === 'debt' && parsePersonalDebt(t).status !== 'paid').reduce((acc, t) => acc + t.amount, 0);
-
-  const total = (!type || type === 'all' || type === 'all_transactions') 
-    ? totalMoneyIn - totalMoneyOut
-    : transactions.reduce((acc, t) => acc + t.amount, 0) + baseBalance;
-
-  const titles: Record<string, string> = {
-    income: 'Total Income',
-    expense: 'Total Expenses',
-    debt: 'Total Debts',
-    all: 'Net Balance',
-    all_transactions: 'Net Balance'
+  const resetFilters = () => {
+    setSearchQuery('');
+    setDatePreset('all');
+    setStartDate('');
+    setEndDate('');
+    setActiveType('all');
   };
 
-  const periodDisplay = period ? ` (${period})` : '';
+  const isFiltered = searchQuery.trim() !== '' || datePreset !== 'all' || activeType !== 'all' || startDate !== '' || endDate !== '';
 
   return (
-    <div className="flex flex-col tracking-tight pt-4">
-      <div className="flex items-center justify-between mb-8">
+    <div className="flex flex-col tracking-tight pt-4 pb-20">
+      {/* Top Bar Header */}
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-sm transition-transform active:scale-95">
+          <button 
+            onClick={() => navigate(-1)} 
+            className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-xs transition-transform active:scale-95"
+          >
             <ArrowLeft size={20} />
           </button>
-          <h1 className="text-lg font-bold text-gray-900 capitalize">{(!type || type === 'all' || type === 'all_transactions') ? 'All' : type} History{periodDisplay}</h1>
+          <div>
+            <h1 className="text-xl font-black text-gray-900">Transaction History</h1>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Searchable Records & Analysis</p>
+          </div>
         </div>
         <button 
           onClick={() => setShowCsvImport(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-brand-50 text-brand-600 rounded-lg text-xs font-bold border border-brand-100 active:scale-95 transition-transform hover:bg-brand-100"
+          className="flex items-center gap-1.5 px-3 py-2 bg-brand-50 text-brand-600 rounded-xl text-xs font-bold border border-brand-100 active:scale-95 transition-transform hover:bg-brand-100"
         >
           <FileText size={14} /> Import CSV
         </button>
       </div>
 
-      <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 flex flex-col items-center mb-8">
-        <h2 className="text-gray-500 font-medium text-sm mb-2">{titles[type || ''] || 'Total'}</h2>
-        <div className="text-3xl font-bold text-gray-900 mb-4">{formatCurrency(total, currencyCode)}</div>
+      {/* Primary Category Selector Tabs */}
+      <div className="flex bg-gray-100/80 p-1.5 rounded-2xl mb-6 gap-1 overflow-x-auto">
+        {[
+          { id: 'all', label: 'All History', count: counts.all },
+          { id: 'expense', label: 'Expenses', count: counts.expense },
+          { id: 'income', label: 'Income', count: counts.income },
+          { id: 'debt', label: 'Debts', count: counts.debt },
+        ].map(tab => {
+          const isActive = activeType === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveType(tab.id)}
+              className={`flex-1 min-w-[90px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                isActive 
+                  ? 'bg-white text-gray-900 shadow-sm border border-gray-200/50' 
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${isActive ? 'bg-gray-100 text-gray-900' : 'bg-gray-200/60 text-gray-600'}`}>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-        {(!type || type === 'all' || type === 'all_transactions') && (
-          <div className="flex gap-4 w-full mt-2">
-            <div className="flex-1 bg-emerald-50 rounded-2xl p-4 flex flex-col items-center border border-emerald-100/50">
-              <span className="text-[10px] uppercase font-bold text-emerald-600 mb-1">Total Money In</span>
-              <span className="text-lg font-black text-emerald-700">{formatCurrency(totalMoneyIn, currencyCode)}</span>
+      {/* Robust Search & Date Range Filters Box */}
+      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mb-6 space-y-4">
+        {/* Search Bar */}
+        <div className="relative flex items-center">
+          <Search size={18} className="absolute left-3.5 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search items, notes, categories, amounts..."
+            className="w-full pl-10 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder:text-gray-400"
+          />
+          {searchQuery && (
+            <button 
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 text-gray-400 hover:text-gray-600 p-1"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Date Presets Row */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400 flex items-center gap-1">
+              <Calendar size={12} /> Date Range Filter
+            </span>
+            {isFiltered && (
+              <button 
+                onClick={resetFilters}
+                className="text-[10px] font-bold text-brand-600 hover:underline flex items-center gap-1"
+              >
+                <RefreshCw size={10} /> Reset Filters
+              </button>
+            )}
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {[
+              { id: 'all', label: 'All Time' },
+              { id: 'today', label: 'Today' },
+              { id: 'this_week', label: 'This Week' },
+              { id: 'this_month', label: 'This Month' },
+              { id: 'last_month', label: 'Last Month' },
+              { id: 'this_year', label: 'This Year' },
+              { id: 'custom', label: 'Custom Range' },
+            ].map(p => (
+              <button
+                key={p.id}
+                onClick={() => setDatePreset(p.id)}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all border ${
+                  datePreset === p.id 
+                    ? 'bg-gray-900 text-white border-gray-900 shadow-xs' 
+                    : 'bg-gray-50 text-gray-600 border-gray-200/80 hover:bg-gray-100'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Custom Date Inputs if Custom Selected */}
+        {datePreset === 'custom' && (
+          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
             </div>
-            <div className="flex-1 bg-red-50 rounded-2xl p-4 flex flex-col items-center border border-red-100/50">
-              <span className="text-[10px] uppercase font-bold text-red-600 mb-1">Total Money Out</span>
-              <span className="text-lg font-black text-red-700">{formatCurrency(totalMoneyOut, currencyCode)}</span>
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">End Date</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
             </div>
+          </div>
+        )}
+
+        {/* Sorting Dropdown */}
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs">
+          <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400 flex items-center gap-1">
+            <ArrowUpDown size={12} /> Sort By
+          </span>
+          <select
+            value={sortBy}
+            onChange={(e: any) => setSortBy(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1 text-xs font-bold text-gray-800 outline-none focus:ring-1 focus:ring-brand-500"
+          >
+            <option value="date_desc">Newest First</option>
+            <option value="date_asc">Oldest First</option>
+            <option value="amount_desc">Highest Amount</option>
+            <option value="amount_asc">Lowest Amount</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Filtered Financial Summary Metrics Card */}
+      <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-6">
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Filtered Result Overview</h2>
+          <span className="bg-gray-100 text-gray-800 text-[10px] font-black px-2.5 py-1 rounded-full">
+            {filteredTransactions.length} {filteredTransactions.length === 1 ? 'record' : 'records'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 text-center bg-gray-50/80 p-3.5 rounded-2xl border border-gray-100">
+          <div>
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Total In</p>
+            <p className="text-xs font-black text-emerald-600 mt-0.5">{formatCurrency(filteredMoneyIn, currencyCode)}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Total Out</p>
+            <p className="text-xs font-black text-rose-600 mt-0.5">{formatCurrency(filteredMoneyOut, currencyCode)}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Net Total</p>
+            <p className={`text-xs font-black mt-0.5 ${filteredNetBalance < 0 ? 'text-red-500' : 'text-gray-900'}`}>
+              {formatCurrency(filteredNetBalance, currencyCode)}
+            </p>
+          </div>
+        </div>
+        {filteredUnpaidDebts > 0 && (
+          <div className="mt-2.5 text-center text-[10px] font-bold text-amber-700 bg-amber-50/90 py-1.5 px-3 rounded-xl border border-amber-200/60 flex items-center justify-center gap-1.5">
+            <AlertCircle size={12} className="text-amber-600 shrink-0" />
+            <span>Active Debts Balance: {formatCurrency(filteredUnpaidDebts, currencyCode)} (tracked separately from expenses)</span>
           </div>
         )}
       </div>
 
+      {/* Transaction Records List */}
       <div>
-        <h2 className="text-lg font-bold text-gray-900 mb-4 px-1">Records</h2>
+        <h2 className="text-sm font-black text-gray-900 mb-3 px-1 uppercase tracking-wider">Records</h2>
         {loading ? (
-           <div className="text-center text-gray-400 py-8">Loading...</div>
-        ) : transactions.length === 0 ? (
-           <div className="text-center text-gray-400 py-8 bg-white rounded-2xl border border-gray-50">No {type} records found.</div>
+          <div className="text-center text-gray-400 py-12 bg-white rounded-2xl border border-gray-50">Loading records...</div>
+        ) : filteredTransactions.length === 0 ? (
+          <div className="text-center py-12 px-4 bg-white rounded-3xl border border-gray-100 space-y-3">
+            <div className="w-12 h-12 bg-gray-100 text-gray-400 rounded-full flex items-center justify-center mx-auto">
+              <Search size={22} />
+            </div>
+            <p className="text-sm font-bold text-gray-800">No matching records found</p>
+            <p className="text-xs text-gray-400 max-w-xs mx-auto">Try adjusting your search keywords, active category filter, or date range.</p>
+            {isFiltered && (
+              <button
+                onClick={resetFilters}
+                className="px-4 py-2 bg-brand-600 text-white font-bold text-xs rounded-xl hover:bg-brand-700 transition-colors"
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {transactions.map(tx => {
+            {filteredTransactions.map(tx => {
               const isDebt = tx.type === 'debt';
               const debtMeta = isDebt ? parsePersonalDebt(tx) : null;
               
               return (
-              <div key={tx.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-50 flex flex-col justify-center min-h-[80px]">
+              <div key={tx.id} className="bg-white p-4 rounded-2xl shadow-xs border border-gray-100 flex flex-col justify-center transition-all hover:border-gray-200">
                 {editingId === tx.id ? (
                    <div className="flex flex-col gap-3">
                       <div className="flex gap-2">
                         <select
                           value={editForm.type}
                           onChange={(e) => setEditForm({...editForm, type: e.target.value})}
-                          className="p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500"
+                          className="p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500 font-bold"
                         >
                           <option value="income">Income</option>
                           <option value="expense">Expense</option>
@@ -274,14 +533,14 @@ export default function HistoryPage() {
                           type="number"
                           value={editForm.amount}
                           onChange={(e) => setEditForm({...editForm, amount: e.target.value})}
-                          className="w-1/3 p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500"
+                          className="w-1/3 p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500 font-bold"
                           placeholder="Amount"
                         />
                         <input 
                           type="text"
                           value={editForm.category}
                           onChange={(e) => setEditForm({...editForm, category: e.target.value})}
-                          className="flex-1 p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500"
+                          className="flex-1 p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500 font-bold"
                           placeholder="Category"
                         />
                       </div>
@@ -290,7 +549,7 @@ export default function HistoryPage() {
                           type="date"
                           value={editForm.date}
                           onChange={(e) => setEditForm({...editForm, date: e.target.value})}
-                          className="p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500"
+                          className="p-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brand-500 font-bold"
                         />
                         <input 
                           type="text"
@@ -303,20 +562,20 @@ export default function HistoryPage() {
 
                       {editForm.type === 'debt' && (
                         <div className="flex flex-col gap-2 p-3 bg-red-50/20 rounded-xl border border-red-100/30">
-                          <div className="flex gap-2 items-center">
+                          <div className="flex gap-2 items-center flex-wrap">
                             <span className="text-[10px] font-bold text-gray-500 uppercase">Repayment Date:</span>
                             <input 
                               type="date"
                               value={editForm.repaymentDate}
                               onChange={(e) => setEditForm({...editForm, repaymentDate: e.target.value})}
-                              className="p-1 px-2 bg-white border border-gray-200 rounded text-xs outline-none focus:ring-1 focus:ring-brand-500"
+                              className="p-1 px-2 bg-white border border-gray-200 rounded text-xs outline-none focus:ring-1 focus:ring-brand-500 font-bold"
                             />
                             
                             <span className="text-[10px] font-bold text-gray-500 uppercase ml-2">Status:</span>
                             <select
                               value={editForm.status}
                               onChange={(e) => setEditForm({...editForm, status: e.target.value})}
-                              className="p-1 bg-white border border-gray-200 rounded text-xs outline-none"
+                              className="p-1 bg-white border border-gray-200 rounded text-xs outline-none font-bold"
                             >
                               <option value="unpaid">Unpaid</option>
                               <option value="paid">Paid</option>
@@ -340,7 +599,7 @@ export default function HistoryPage() {
                                   <select
                                     value={editForm.frequency}
                                     onChange={(e) => setEditForm({...editForm, frequency: e.target.value})}
-                                    className="p-1 bg-white border border-gray-200 rounded text-xs outline-none"
+                                    className="p-1 bg-white border border-gray-200 rounded text-xs outline-none font-bold"
                                   >
                                     <option value="weekly">Weekly</option>
                                     <option value="monthly">Monthly</option>
@@ -363,7 +622,7 @@ export default function HistoryPage() {
                                     value={editForm.recurringAmount}
                                     onChange={(e) => setEditForm({...editForm, recurringAmount: e.target.value})}
                                     placeholder="Defaults to total amount"
-                                    className="p-1 px-2 w-full bg-white border border-gray-200 rounded text-xs outline-none focus:ring-1 focus:ring-brand-505"
+                                    className="p-1 px-2 w-full bg-white border border-gray-200 rounded text-xs outline-none focus:ring-1 focus:ring-brand-500"
                                   />
                                 </div>
 
@@ -452,11 +711,13 @@ export default function HistoryPage() {
                       >
                         <h4 className="text-sm font-bold text-gray-900 capitalize flex items-center gap-2 flex-wrap">
                           <span>{tx.category}</span>
-                          {isDebt && (
-                            <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full ${debtMeta?.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                              {debtMeta?.status || 'unpaid'}
-                            </span>
-                          )}
+                          <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md ${
+                            tx.type === 'income' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                            tx.type === 'debt' ? (debtMeta?.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100') :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {tx.type === 'debt' ? (debtMeta?.status || 'unpaid') : tx.type}
+                          </span>
                         </h4>
                         
                         {(() => {
@@ -479,7 +740,8 @@ export default function HistoryPage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+
+                      <div className="flex items-center gap-2 shrink-0">
                         {isDebt && (
                           <button 
                             onClick={() => togglePersonalDebtStatus(tx)}
@@ -488,20 +750,22 @@ export default function HistoryPage() {
                             {debtMeta?.status === 'paid' ? 'Mark Unpaid' : 'Mark Paid'}
                           </button>
                         )}
-                        <span className={`text-sm font-bold mr-2 ${tx.type === 'income' ? 'text-success-500' : 'text-danger-500'}`}>
+                        <span className={`text-sm font-black mr-1 ${tx.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
                           {tx.type === 'income' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount), currencyCode)}
                         </span>
                         <button 
                           onClick={() => startEdit(tx)}
-                          className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                          className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                          title="Edit transaction"
                         >
-                          <Edit2 size={16} />
+                          <Edit2 size={15} />
                         </button>
                         <button 
                           onClick={() => { setTxToDelete(tx); setShowDeleteModal(true); }}
-                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete transaction"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={15} />
                         </button>
                       </div>
                     </div>
@@ -518,7 +782,6 @@ export default function HistoryPage() {
                             <button 
                               type="button"
                               onClick={() => {
-                                // Auto generate and save schedule
                                 const parsedAmount = debtMeta.recurringAmount || tx.amount;
                                 const generated = generateRecurringPayments(debtMeta.repaymentDate || tx.date, debtMeta.frequency || 'monthly', debtMeta.duration || '3 months', parsedAmount);
                                 updateTransaction(tx.id, {
@@ -540,10 +803,10 @@ export default function HistoryPage() {
                               <div 
                                 key={p.id} 
                                 onClick={() => handleTogglePaymentInstanceStatus(tx, p.id)}
-                                className="bg-white p-3 rounded-xl border border-gray-100 flex items-center justify-between hover:bg-gray-50 active:scale-[0.99] transition-all cursor-pointer select-none shadow-sm"
+                                className="bg-white p-3 rounded-xl border border-gray-100 flex items-center justify-between hover:bg-gray-50 active:scale-[0.99] transition-all cursor-pointer select-none shadow-xs"
                               >
                                 <div className="flex items-center gap-3">
-                                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${p.status === 'paid' ? 'bg-green-500 border-green-500 text-white shadow-sm shadow-green-200' : 'border-gray-300'}`}>
+                                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${p.status === 'paid' ? 'bg-green-500 border-green-500 text-white shadow-xs shadow-green-200' : 'border-gray-300'}`}>
                                     {p.status === 'paid' && <Check size={12} strokeWidth={4} />}
                                   </div>
                                   <div>

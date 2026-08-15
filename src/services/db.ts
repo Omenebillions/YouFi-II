@@ -519,3 +519,33 @@ export const getUpcomingPayments = async (userId: string) => {
     return [];
   }
 };
+
+export const fetchAllUserBusinessSales = async (userId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from(tables.sales)
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.warn("Warning fetching all user business sales:", error);
+    return [];
+  }
+};
+
+export const fetchAllUserBusinessTransactions = async (userId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from(tables.businessTransactions)
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.warn("Warning fetching all user business transactions:", error);
+    return [];
+  }
+};

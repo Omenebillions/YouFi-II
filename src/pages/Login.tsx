@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { ShieldAlert } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import logo from '../assets/images/youfi_app_logo_1779452869088.png';
 
 export default function Login() {
   const { user, signInWithGoogle, signInEmail, signUpEmail, resetPassword } = useAuth();
@@ -78,7 +77,12 @@ export default function Login() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 px-4">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden p-8 flex flex-col items-center text-center">
         <div className="w-20 h-20 bg-white border border-gray-100 shadow-sm rounded-2xl flex items-center justify-center mb-4 overflow-hidden p-2">
-          <img src={logo} alt="YouFi Logo" className="w-full h-full object-contain" />
+          <img 
+            src="/logo.jpeg" 
+            onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/logo.png'; }} 
+            alt="YouFi Logo" 
+            className="w-full h-full object-contain" 
+          />
         </div>
         
         <h1 className="text-2xl font-bold tracking-tight text-gray-900 mb-1">YouFi</h1>

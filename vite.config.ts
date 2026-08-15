@@ -12,23 +12,81 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        devOptions: {
+          enabled: true
+        },
+        includeAssets: [
+          'logo.jpeg',
+          'logo.png',
+          'favicon.png',
+          'favicon.ico',
+          'apple-touch-icon.png',
+          'pwa-192x192.png',
+          'pwa-512x512.png',
+          'notification-icon.png',
+          'robots.txt',
+          'sitemap.xml',
+          'assetlinks.json'
+        ],
         manifest: {
-          name: 'YouFi - Personal Finance',
+          name: 'YouFi - Personal & SME Financial Co-Pilot',
           short_name: 'YouFi',
-          description: 'Personal Finance and SME Manager',
-          theme_color: '#4CAF50',
+          description: 'Personal Finance and SME Manager with AI Co-Pilot',
+          theme_color: '#10b981',
+          background_color: '#ffffff',
           display: 'standalone',
-          start_url: '/',
+          orientation: 'portrait-primary',
+          start_url: '/?source=pwa',
+          scope: '/',
+          categories: ['finance', 'business', 'productivity'],
+          prefer_related_applications: false,
+          related_applications: [
+            {
+              platform: 'play',
+              id: 'app.youfi.twa',
+              url: 'https://play.google.com/store/apps/details?id=app.youfi.twa'
+            }
+          ],
+          shortcuts: [
+            {
+              name: 'Dashboard',
+              short_name: 'Dashboard',
+              description: 'Open YouFi Financial Dashboard',
+              url: '/?source=pwa_shortcut',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+            },
+            {
+              name: 'Business & Invoices',
+              short_name: 'Invoices',
+              description: 'Manage Business Invoices',
+              url: '/business-invoices?source=pwa_shortcut',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+            }
+          ],
           icons: [
             {
               src: '/pwa-192x192.png',
               sizes: '192x192',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/pwa-192x192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'maskable'
             },
             {
               src: '/pwa-512x512.png',
               sizes: '512x512',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         },

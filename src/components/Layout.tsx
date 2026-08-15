@@ -13,7 +13,6 @@ import { usePremium } from '../contexts/PremiumContext';
 import Paywall from './Paywall';
 import { supabase } from '../services/supabase';
 import { parseBusinessName } from '../lib/business';
-import logo from '../assets/images/youfi_app_logo_1779452869088.png';
 import DuePaymentsBanner from './DuePaymentsBanner';
 
 
@@ -129,7 +128,12 @@ export default function Layout() {
         <div className="p-6 h-full flex flex-col pt-16">
           <div className="flex items-center gap-3 mb-6 px-2">
             <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm border border-gray-100 flex items-center justify-center bg-white p-1">
-                 <img src={logo} alt="YouFi" className="w-full h-full object-contain" />
+                 <img 
+                   src="/logo.jpeg" 
+                   onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/logo.png'; }} 
+                   alt="YouFi" 
+                   className="w-full h-full object-contain" 
+                 />
             </div>
             <h2 className="text-xl font-bold text-gray-900 tracking-tight">YouFi</h2>
           </div>

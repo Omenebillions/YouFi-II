@@ -54,8 +54,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       handleAuthChange(session?.user ?? null);
     });
 
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          handleAuthChange(session?.user ?? null);
+        });
+      }
+    };
+    window.addEventListener('message', handleMessage);
+
     return () => {
       subscription.unsubscribe();
+      window.removeEventListener('message', handleMessage);
       if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
@@ -98,16 +108,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
+    const isIframe = window.self !== window.top;
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`
+        redirectTo: `${window.location.origin}/auth/callback`,
+        skipBrowserRedirect: isIframe
       }
     });
 
     if (error) {
       console.error("Google sign in error", error);
       throw error;
+    }
+
+    if (isIframe && data?.url) {
+      const popup = window.open(data.url, 'google_oauth_popup', 'width=520,height=650,scrollbars=yes');
+      if (!popup) {
+        window.top!.location.href = data.url;
+      }
     }
   };
 

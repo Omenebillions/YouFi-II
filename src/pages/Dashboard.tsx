@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
 import { tables } from '../services/db';
-import { Bell, ShoppingBag, HeartPulse, Wallet, ArrowDown, CreditCard, BarChart3, TrendingUp, ArrowRightLeft, Building2, TrendingDown, X } from 'lucide-react';
+import { Bell, ShoppingBag, HeartPulse, Wallet, ArrowDown, CreditCard, BarChart3, TrendingUp, ArrowRightLeft, Building2, TrendingDown, X, PieChart, ChevronRight } from 'lucide-react';
 import { isSameMonth, format as formatDate, addDays, isThisWeek, isThisMonth, isThisYear } from 'date-fns';
 import { formatCurrency } from '../lib/currency';
 import { usePrivacy } from '../contexts/PrivacyContext';
@@ -16,8 +16,8 @@ import {
 import { checkUpcomingPaymentNotifications } from '../lib/notifications';
 import { parsePersonalDebt, getCleanNote } from '../lib/debt';
 import { parseBusinessName, serializeBusinessTxCategory } from '../lib/business';
+import { parseIncomeCategory, parseExpensePlanCategory, isIncomeBudget } from '../lib/expensesPlanner';
 
-import logo from '../assets/images/youfi_app_logo_1779452869088.png';
 import NotificationCenter from '../components/NotificationCenter';
 
 export default function Dashboard() {
@@ -32,13 +32,18 @@ export default function Dashboard() {
   const [transferLoading, setTransferLoading] = useState(false);
   const [chartData, setChartData] = useState<any[]>([]);
   const [upcomingPayments, setUpcomingPayments] = useState<any[]>([]);
+  const [plannerBudgets, setPlannerBudgets] = useState<any[]>([]);
+  const [livingExpenses, setLivingExpenses] = useState<any[]>([]);
 
   const fetchAllData = async () => {
     if (!user) return;
-    const [txRes, bizRes, upcomingRes] = await Promise.all([
+    const currentMonthStr = formatDate(new Date(), 'yyyy-MM');
+    const [txRes, bizRes, upcomingRes, budgetRes, livingRes] = await Promise.all([
       supabase.from(tables.transactions).select('*').eq('user_id', user.id).order('date', { ascending: false }),
       supabase.from(tables.businesses).select('*').eq('user_id', user.id),
-      supabase.from(tables.upcomingPayments).select('*').eq('user_id', user.id)
+      supabase.from(tables.upcomingPayments).select('*').eq('user_id', user.id),
+      supabase.from('budgets').select('*').eq('user_id', user.id).eq('period', currentMonthStr),
+      supabase.from('living_expenses').select('*').eq('user_id', user.id)
     ]);
 
     if (txRes.data) {
@@ -60,6 +65,12 @@ export default function Dashboard() {
       const personal = upcomingRes.data.filter(p => !p.business_id && !(p.title && p.title.startsWith('[Biz:')));
       setUpcomingPayments(personal);
       checkUpcomingPaymentNotifications(personal);
+    }
+    if (budgetRes.data) {
+      setPlannerBudgets(budgetRes.data);
+    }
+    if (livingRes.data) {
+      setLivingExpenses(livingRes.data);
     }
     setLoading(false);
   };
@@ -208,7 +219,7 @@ export default function Dashboard() {
   const allIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
   const allExpense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
   const debtsTotal = transactions.filter(t => t.type === 'debt' && parsePersonalDebt(t).status !== 'paid').reduce((acc, t) => acc + t.amount, 0);
-  const totalBalance = (userProfile?.income || 0) + allIncome - allExpense - debtsTotal;
+  const totalBalance = (userProfile?.income || 0) + allIncome - allExpense;
   
   // Current Month Data
   const currentMonthTx = transactions.filter(t => {
@@ -248,7 +259,12 @@ export default function Dashboard() {
       <div className="flex justify-between items-center mb-8 pr-20">
           <div className="flex items-center gap-3">
              <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center p-1 shadow-sm">
-                <img src={logo} alt="YouFi" className="w-full h-full object-contain" />
+                <img 
+                  src="/logo.jpeg" 
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/logo.png'; }} 
+                  alt="YouFi" 
+                  className="w-full h-full object-contain" 
+                />
              </div>
              <div>
                <p className="text-gray-400 font-bold text-[10px] uppercase tracking-widest mb-0.5 leading-none">Welcome back,</p>
@@ -299,19 +315,31 @@ export default function Dashboard() {
 
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 gap-4">
-            <div className="bg-emerald-500 p-5 rounded-[28px] text-white shadow-lg shadow-emerald-200">
-                <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center mb-3">
-                    <TrendingUp size={18} />
+            <div 
+              onClick={() => navigate('/history/income')}
+              className="bg-emerald-500 p-5 rounded-[28px] text-white shadow-lg shadow-emerald-200 cursor-pointer hover:bg-emerald-600 active:scale-[0.98] transition-all group relative overflow-hidden"
+            >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
+                      <TrendingUp size={18} />
+                  </div>
+                  <ChevronRight size={16} className="opacity-70 group-hover:translate-x-0.5 transition-transform" />
                 </div>
                 <p className="text-[10px] font-bold uppercase opacity-80 mb-0.5 tracking-wider">Total Money In</p>
                 <h4 className="text-lg font-black">{format((userProfile?.income || 0) + allIncome)}</h4>
             </div>
-            <div className="bg-rose-500 p-5 rounded-[28px] text-white shadow-lg shadow-rose-200">
-                <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center mb-3">
-                    <TrendingDown size={18} />
+            <div 
+              onClick={() => navigate('/history/expense')}
+              className="bg-rose-500 p-5 rounded-[28px] text-white shadow-lg shadow-rose-200 cursor-pointer hover:bg-rose-600 active:scale-[0.98] transition-all group relative overflow-hidden"
+            >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
+                      <TrendingDown size={18} />
+                  </div>
+                  <ChevronRight size={16} className="opacity-70 group-hover:translate-x-0.5 transition-transform" />
                 </div>
                 <p className="text-[10px] font-bold uppercase opacity-80 mb-0.5 tracking-wider">Total Money Out</p>
-                <h4 className="text-lg font-black">{format(allExpense + debtsTotal)}</h4>
+                <h4 className="text-lg font-black">{format(allExpense)}</h4>
             </div>
         </div>
       </div>
@@ -376,6 +404,166 @@ export default function Dashboard() {
              </div>
           </div>
       )}
+
+      {/* Overview Cards Grid: Living Expenses & Expenses Planner */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* Living Expenses Card */}
+        {(() => {
+          const currencyCode = userProfile?.currency || 'USD';
+          const monthlyLiving = livingExpenses.reduce((acc, exp) => {
+            let monthlyAmt = Number(exp.amount) || 0;
+            if (exp.frequency === 'weekly') monthlyAmt = (monthlyAmt * 52) / 12;
+            if (exp.frequency === 'yearly') monthlyAmt = monthlyAmt / 12;
+            return acc + monthlyAmt;
+          }, 0);
+
+          return (
+            <div 
+              onClick={() => navigate('/living-expenses')}
+              className="bg-white border border-gray-100 p-6 rounded-[32px] cursor-pointer hover:border-rose-200 transition-all shadow-sm group flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-500 shadow-2xs group-hover:bg-rose-500 group-hover:text-white transition-colors">
+                      <HeartPulse size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-gray-900">Living Expenses</h3>
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-rose-500">Monthly Run-Rate</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs font-bold text-rose-500 group-hover:translate-x-0.5 transition-transform">
+                    <span>Manage</span>
+                    <ChevronRight size={16} />
+                  </div>
+                </div>
+
+                {/* Main Total Highlight */}
+                <div className="bg-rose-50/50 p-3.5 rounded-2xl mb-4 border border-rose-100/60 flex items-center justify-between">
+                  <div>
+                    <p className="text-[9px] font-bold text-rose-400 uppercase tracking-wider">Est. Monthly Total</p>
+                    <p className="text-base font-black text-rose-600 mt-0.5">{formatCurrency(monthlyLiving, currencyCode, isPrivacyMode)}</p>
+                  </div>
+                  <span className="text-xs font-extrabold text-rose-700 bg-white px-2.5 py-1 rounded-xl shadow-2xs border border-rose-100">
+                    {livingExpenses.length} {livingExpenses.length === 1 ? 'item' : 'items'}
+                  </span>
+                </div>
+
+                {/* Top Living Expenses List */}
+                {livingExpenses.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Fixed Cost Items</p>
+                    {livingExpenses.slice(0, 3).map(exp => (
+                      <div key={exp.id} className="flex items-center justify-between bg-gray-50/60 p-2.5 rounded-xl border border-gray-100 text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-rose-400" />
+                          <span className="font-bold text-gray-800">{exp.name}</span>
+                          <span className="text-[10px] text-gray-400 font-medium capitalize">({exp.frequency})</span>
+                        </div>
+                        <span className="font-black text-gray-900">{formatCurrency(exp.amount, currencyCode, isPrivacyMode)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs font-semibold text-gray-400 italic">No living expenses set up yet. Tap to configure your monthly run-rate!</p>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Expenses Planner Card */}
+        {(() => {
+          const currencyCode = userProfile?.currency || 'USD';
+          const incomeBudgets = plannerBudgets.filter(b => isIncomeBudget(b.category));
+          const expenseBudgets = plannerBudgets.filter(b => !isIncomeBudget(b.category));
+
+          const parsedIncomes = incomeBudgets.map(b => ({
+            ...parseIncomeCategory(b.category),
+            amount: Number(b.amount) || 0
+          }));
+
+          const parsedPlans = expenseBudgets.map(b => ({
+            ...parseExpensePlanCategory(b.category),
+            id: b.id,
+            amount: Number(b.amount) || 0
+          }));
+
+          const totalExpectedIncome = parsedIncomes.reduce((a, b) => a + b.amount, 0);
+          const totalAllocatedPlan = parsedPlans.reduce((a, b) => a + b.amount, 0);
+          const remainingUnallocated = totalExpectedIncome - totalAllocatedPlan;
+
+          return (
+            <div 
+              onClick={() => navigate('/expenses-planner')}
+              className="bg-white border border-gray-100 p-6 rounded-[32px] cursor-pointer hover:border-brand-200 transition-all shadow-sm group flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-brand-50 flex items-center justify-center text-brand-600 shadow-2xs group-hover:bg-brand-600 group-hover:text-white transition-colors">
+                      <PieChart size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-gray-900">Expenses Planner</h3>
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-brand-600">Monthly Budget & Subs</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs font-bold text-brand-600 group-hover:translate-x-0.5 transition-transform">
+                    <span>View Planner</span>
+                    <ChevronRight size={16} />
+                  </div>
+                </div>
+
+                {/* Quick summary numbers */}
+                <div className="grid grid-cols-3 gap-2 bg-gray-50/80 p-3.5 rounded-2xl mb-4 border border-gray-100 text-center">
+                  <div>
+                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Expected Inc.</p>
+                    <p className="text-xs font-black text-emerald-600 mt-0.5">{formatCurrency(totalExpectedIncome, currencyCode, isPrivacyMode)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Allocated</p>
+                    <p className="text-xs font-black text-brand-600 mt-0.5">{formatCurrency(totalAllocatedPlan, currencyCode, isPrivacyMode)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Unallocated</p>
+                    <p className={`text-xs font-black mt-0.5 ${remainingUnallocated < 0 ? 'text-red-500' : 'text-gray-900'}`}>
+                      {formatCurrency(remainingUnallocated, currencyCode, isPrivacyMode)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Top Planned Expenses Preview */}
+                {parsedPlans.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Planned Expenses</p>
+                    {parsedPlans.slice(0, 3).map(plan => {
+                      const subCount = plan.subItems ? plan.subItems.length : 0;
+                      return (
+                        <div key={plan.id} className="flex items-center justify-between bg-gray-50/60 p-2.5 rounded-xl border border-gray-100 text-xs">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-brand-500" />
+                            <span className="font-bold text-gray-800">{plan.name}</span>
+                            {subCount > 0 && (
+                              <span className="bg-brand-50 text-brand-600 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                {subCount} {subCount === 1 ? 'sub' : 'subs'}
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-black text-gray-900">{formatCurrency(plan.amount, currencyCode, isPrivacyMode)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs font-semibold text-gray-400 italic">No expense plans created for this month yet. Tap to start planning!</p>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
 
       {chartData.length > 0 && (
           <motion.div 

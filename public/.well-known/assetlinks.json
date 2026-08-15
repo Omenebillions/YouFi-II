@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.youfi.twa",
+      "sha256_cert_fingerprints": [
+        "10:B2:76:80:CA:6F:A2:38:52:CD:B2:D3:85:62:3C:99:99:99:99:99:99:99:99:99:99:99:99:99:99:99:99:99"
+      ]
+    }
+  }
+]
