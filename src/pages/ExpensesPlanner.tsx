@@ -531,16 +531,16 @@ export default function ExpensesPlanner() {
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {incomeSources.map(inc => (
-                <div key={inc.id} className="bg-white p-3 rounded-xl border border-gray-100 flex items-center justify-between shadow-2xs group">
-                  <div>
-                    <h4 className="font-bold text-gray-900 text-xs">{inc.name}</h4>
-                    {inc.source && <p className="text-[10px] text-gray-400 font-medium">{inc.source}</p>}
+                <div key={inc.id} className="bg-white p-3 rounded-xl border border-gray-100 flex items-center justify-between shadow-2xs group gap-2">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-gray-900 text-xs truncate">{inc.name}</h4>
+                    {inc.source && <p className="text-[10px] text-gray-400 font-medium truncate">{inc.source}</p>}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <span className="font-bold text-xs text-emerald-600">
                       {formatCurrency(inc.amount, currencyCode, isPrivacyMode)}
                     </span>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button 
                         onClick={() => handleOpenEditIncome(inc)}
                         className="p-1 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
@@ -688,25 +688,25 @@ export default function ExpensesPlanner() {
                 <div className="p-5 relative">
                   <div className={`absolute top-0 left-0 w-1.5 h-full ${colorClass} opacity-90`} />
 
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                     {/* Left Details */}
-                    <div className="flex items-start gap-3.5">
+                    <div className="flex items-start gap-3.5 flex-1 min-w-0">
                       <div className={`w-12 h-12 rounded-2xl flex flex-col items-center justify-center font-black text-xs shrink-0 ${colorClass} text-white shadow-xs`}>
                         <span>{planPercentage.toFixed(0)}%</span>
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-bold text-gray-900 text-base leading-snug">{plan.name}</h3>
-                          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${bgClass}`}>
+                          <h3 className="font-bold text-gray-900 text-base leading-snug truncate max-w-full">{plan.name}</h3>
+                          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border whitespace-nowrap ${bgClass}`}>
                             {plan.category}
                           </span>
                         </div>
-                        <p className="text-xs text-gray-400 font-medium mt-1 flex items-center gap-2">
-                          <span>Allocated Plan</span>
+                        <p className="text-xs text-gray-400 font-medium mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="whitespace-nowrap">Allocated Plan</span>
                           {plan.subItems && plan.subItems.length > 0 && (
                             <>
-                              <span>•</span>
-                              <span className="text-brand-600 font-bold flex items-center gap-1">
+                              <span className="hidden sm:inline">•</span>
+                              <span className="text-brand-600 font-bold flex items-center gap-1 whitespace-nowrap">
                                 <ListPlus size={12} /> {completedSubsCount}/{plan.subItems.length} subs ({formatCurrency(subTotal, currencyCode, isPrivacyMode)})
                               </span>
                             </>
@@ -716,7 +716,7 @@ export default function ExpensesPlanner() {
                     </div>
 
                     {/* Right Amount & Actions */}
-                    <div className="flex flex-col items-end gap-2 shrink-0">
+                    <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 shrink-0 ml-[62px] sm:ml-0 border-t sm:border-0 border-gray-100 pt-3 sm:pt-0 mt-1 sm:mt-0">
                       <p className="font-black text-lg text-gray-900 tracking-tight">
                         {formatCurrency(plan.amount, currencyCode, isPrivacyMode)}
                       </p>
@@ -800,30 +800,30 @@ export default function ExpensesPlanner() {
 
                           if (isEditingThisSub) {
                             return (
-                              <div key={sub.id} className="p-2 bg-white rounded-xl border border-brand-300 shadow-xs flex items-center gap-2">
+                              <div key={sub.id} className="p-2 bg-white rounded-xl border border-brand-300 shadow-xs flex items-center gap-2 flex-wrap">
                                 <input 
                                   type="text"
                                   value={editSubName}
                                   onChange={(e) => setEditSubName(e.target.value)}
                                   placeholder="Sub name"
-                                  className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                  className="flex-1 min-w-[100px] bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
                                 />
                                 <input 
                                   type="number"
                                   value={editSubAmount}
                                   onChange={(e) => setEditSubAmount(e.target.value)}
                                   placeholder="Amt"
-                                  className="w-20 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                  className="w-20 shrink-0 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
                                 />
                                 <button 
                                   onClick={() => handleSaveSubItemEdit(plan, sub.id)}
-                                  className="px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg transition-colors"
+                                  className="px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg transition-colors shrink-0"
                                 >
                                   Save
                                 </button>
                                 <button 
                                   onClick={() => setEditingSubId(null)}
-                                  className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs rounded-lg transition-colors"
+                                  className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs rounded-lg transition-colors shrink-0"
                                 >
                                   Cancel
                                 </button>
@@ -1146,20 +1146,20 @@ export default function ExpensesPlanner() {
                   )}
 
                   {/* Add / Edit sub-item inputs */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <input 
                       type="text"
                       placeholder="Sub name (e.g. Base Rent)"
                       value={newSubName}
                       onChange={(e) => setNewSubName(e.target.value)}
-                      className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      className="flex-1 min-w-[100px] bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
                     />
                     <input 
                       type="number"
                       placeholder="Amt"
                       value={newSubAmount}
                       onChange={(e) => setNewSubAmount(e.target.value)}
-                      className="w-20 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      className="w-20 shrink-0 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
                     />
                     {editingModalSubId ? (
                       <div className="flex gap-1 shrink-0">

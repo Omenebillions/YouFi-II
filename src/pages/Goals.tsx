@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Target, Plus, Flag, Briefcase, CalendarCheck, CheckSquare, Sparkles, X, Loader2, ChevronDown, ChevronUp, CheckCircle, Circle, Trash2, Edit2 } from 'lucide-react';
+import { Target, Plus, Flag, Briefcase, CalendarCheck, CheckSquare, Sparkles, X, Loader2, ChevronDown, ChevronUp, CheckCircle, Circle, Trash2, Edit2, ChevronRight, Check } from 'lucide-react';
 import { getGoals, addGoal, updateGoal, deleteGoal, getPlans, addPlan, updatePlan, deletePlan, fetchTransactions } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency } from '../lib/currency';
 import { GoogleGenAI, Type } from '@google/genai';
 import { motivationQuotes } from '../lib/quotes';
 import { ModalTracker } from '../components/ModalTracker';
+import { motion, AnimatePresence } from 'motion/react';
 
 // Removed client-side GoogleGenAI
 
@@ -18,7 +19,7 @@ export default function Goals() {
   const [isAddingPlan, setIsAddingPlan] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null);
-  const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
+  const [viewingPlan, setViewingPlan] = useState<any>(null);
   
   // Goal Form State
   const [newGoal, setNewGoal] = useState({ title: '', targetAmount: '', deadline: '', emoji: '🎯', frequency: 'monthly' });
@@ -198,6 +199,7 @@ export default function Goals() {
       };
       
       setPlans(plans.map(p => p.id === plan.id ? newPlanData : p));
+      if (viewingPlan?.id === plan.id) setViewingPlan(newPlanData);
       
       await updatePlan(plan.id, {
           plan_data: newPlanData.plan_data,
@@ -476,16 +478,16 @@ export default function Goals() {
            ) : plans.map(plan => (
              <div key={plan.id} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 transition-all duration-300">
                 <div 
-                   className="flex items-center gap-3 mb-3 cursor-pointer" 
-                   onClick={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
+                   className="flex items-center gap-3 mb-3 cursor-pointer group" 
+                   onClick={() => setViewingPlan(plan)}
                 >
-                   <div className="w-10 h-10 bg-orange-50 text-orange-600 rounded-full flex items-center justify-center">
+                   <div className="w-10 h-10 bg-orange-50 text-orange-600 rounded-full flex items-center justify-center group-hover:bg-brand-600 group-hover:text-white transition-colors">
                        <Briefcase size={18} />
                    </div>
                    <div className="flex-1">
                      <h3 className="font-bold text-gray-900 text-sm flex items-center justify-between">
                          {plan.title}
-                         {expandedPlanId === plan.id ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                         <span className="text-[10px] text-brand-600 font-bold uppercase tracking-wider flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">View <ChevronRight size={14} /></span>
                      </h3>
                      <div className="flex gap-2 items-center mt-1">
                          <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-md ${plan.status === 'completed' ? 'text-green-600 bg-green-50' : 'text-brand-600 bg-brand-50'}`}>
@@ -496,16 +498,6 @@ export default function Goals() {
                                  Due {new Date(plan.planData.deadline).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}
                              </span>
                          )}
-                         {expandedPlanId === plan.id && (
-                             <div className="flex items-center gap-1 ml-2">
-                               <button onClick={(e) => startEditPlan(plan, e)} className="text-gray-400 hover:text-brand-600 transition-colors p-1">
-                                  <Edit2 size={12} />
-                               </button>
-                               <button onClick={(e) => handleDeletePlan(plan.id, e)} className="text-gray-400 hover:text-red-500 transition-colors p-1">
-                                  <Trash2 size={12} />
-                               </button>
-                             </div>
-                         )}
                      </div>
                    </div>
                 </div>
@@ -515,23 +507,6 @@ export default function Goals() {
                 <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden mb-4">
                     <div className={`h-full rounded-full transition-all duration-1000 ease-out ${plan.progress === 100 ? 'bg-green-500' : 'bg-brand-500'}`} style={{ width: `${plan.progress || 0}%` }}></div>
                 </div>
-                
-                {expandedPlanId === plan.id && plan.planData?.tasksList && (
-                    <div className="mt-4 pt-4 border-t border-gray-100 animate-in fade-in slide-in-from-top-2">
-                        <div className="flex flex-col gap-2">
-                            {plan.planData.tasksList.map((task: any) => (
-                                <div 
-                                    key={task.id} 
-                                    onClick={() => togglePlanTask(plan, task.id)}
-                                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${task.completed ? 'bg-green-50 border-green-100 text-green-700' : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100'}`}
-                                >
-                                    {task.completed ? <CheckCircle size={18} className="text-green-500 flex-shrink-0" /> : <Circle size={18} className="text-gray-300 flex-shrink-0" />}
-                                    <span className={`text-sm font-medium ${task.completed ? 'line-through opacity-70' : ''}`}>{task.title}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
              </div>
            ))}
            {plans.length > 0 && (
@@ -542,7 +517,115 @@ export default function Goals() {
         </div>
       )}
       
-      <ModalTracker isOpen={isAddingGoal || isAddingPlan} />
+      
+
+      {/* View Plan Modal */}
+      <AnimatePresence>
+        {viewingPlan && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4 backdrop-blur-sm"
+            onClick={() => setViewingPlan(null)}
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl max-h-[90vh] flex flex-col"
+            >
+              <div className="flex justify-between items-start mb-6 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-brand-50 rounded-2xl flex items-center justify-center text-brand-600 shrink-0">
+                    <Briefcase size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-gray-900 leading-tight">{viewingPlan.title}</h2>
+                    <div className="flex gap-2 items-center mt-1">
+                      <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-md ${
+                        viewingPlan.status === 'completed' ? 'text-green-600 bg-green-50' : 'text-brand-600 bg-brand-50'
+                      }`}>
+                        {viewingPlan.status}
+                      </span>
+                      {viewingPlan.plan_data?.deadline && (
+                        <span className="text-[10px] text-gray-400 font-semibold flex items-center gap-1">
+                          <CalendarCheck size={12} />
+                          Due: {new Date(viewingPlan.plan_data.deadline).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setViewingPlan(null)} 
+                  className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center text-gray-600 transition-colors shrink-0"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto pr-2 pb-4 space-y-6">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Plan Overview</h4>
+                    <button 
+                      onClick={(e) => {
+                        setViewingPlan(null);
+                        startEditPlan(viewingPlan, e);
+                      }}
+                      className="text-xs font-bold text-brand-600 hover:text-brand-700 bg-brand-50 px-2 py-1 rounded-md transition-colors"
+                    >
+                      Edit Plan
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                    {viewingPlan.description}
+                  </p>
+                </div>
+
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Progress</h4>
+                    <span className="text-xs font-black text-brand-600">{viewingPlan.progress || 0}%</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                      viewingPlan.progress === 100 ? 'bg-green-500' : 'bg-brand-500'
+                    }`} style={{ width: `${viewingPlan.progress || 0}%` }}></div>
+                  </div>
+                </div>
+
+                {viewingPlan.plan_data?.tasksList && viewingPlan.plan_data.tasksList.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Action Steps</h4>
+                    <div className="flex flex-col gap-2">
+                      {viewingPlan.plan_data.tasksList.map((task: any) => (
+                        <div 
+                          key={task.id} 
+                          onClick={() => togglePlanTask(viewingPlan, task.id)}
+                          className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-all ${
+                            task.completed ? 'bg-green-50 border-green-100 text-green-700' : 'bg-white border-gray-200 text-gray-700 hover:border-brand-300 hover:shadow-sm'
+                          }`}
+                        >
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2 transition-colors ${
+                            task.completed ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-transparent'
+                          }`}>
+                            <Check size={14} className={task.completed ? 'opacity-100' : 'opacity-0'} strokeWidth={3} />
+                          </div>
+                          <span className={`text-sm font-semibold flex-1 ${task.completed ? 'line-through opacity-70' : ''}`}>{task.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+<ModalTracker isOpen={isAddingGoal || isAddingPlan || !!viewingPlan} />
       {/* Add Goal Modal */}
       {isAddingGoal && (
           <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4">
