@@ -355,7 +355,7 @@ export default function BusinessTransactionList() {
                      <RechartsTooltip 
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
                         cursor={{ fill: '#F3F4F6' }}
-                        formatter={(value: number) => [formatCurrency(value), '']}
+                        formatter={(value: any) => [formatCurrency(value), '']}
                         labelStyle={{ color: '#4B5563', fontWeight: 'bold', marginBottom: '4px' }}
                      />
                      {(type === 'all' || type === 'income') && (

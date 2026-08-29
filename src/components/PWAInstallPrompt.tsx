@@ -42,7 +42,7 @@ export default function PWAInstallPrompt() {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 50, scale: 0.95 }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="fixed bottom-20 left-4 right-4 md:left-auto md:right-6 md:w-[420px] bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border border-emerald-100/80 z-50 overflow-hidden"
+        className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-4 right-4 md:left-auto md:right-6 md:w-[420px] bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border border-emerald-100/80 z-50 overflow-hidden"
       >
         <div className="p-5 flex flex-col gap-4">
           {/* Header */}

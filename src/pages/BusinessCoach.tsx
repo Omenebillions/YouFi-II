@@ -90,7 +90,7 @@ ${salesStr}
 
 Goal: Provide elite, CFO-level financial advice. Help the user optimize operations, manage cash flow, reduce expenses, price products correctly, and scale their business. Use structural business frameworks (like EBITDA, CAC, LTV, working capital optimization). Be highly strategic, but explain clearly so an entrepreneur can act on your advice to prosper.`;
       
-      const res = await fetch('/api/gemini/chat', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/gemini/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, userMessage, systemInstruction, isPremium })

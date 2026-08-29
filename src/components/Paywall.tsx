@@ -3,7 +3,6 @@ import { Sparkles, Check, ShieldAlert, CreditCard, X, Loader2, RefreshCw } from 
 import { useNativeBridge } from '../hooks/useNativeBridge';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency } from '../lib/currency';
-import { revenueCat } from '../services/revenueCat';
 
 interface PaywallProps {
   isOpen: boolean;
@@ -20,7 +19,7 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<'pro_monthly' | 'pro_yearly' | 'biz_monthly' | 'biz_yearly'>('pro_yearly');
-  const [paymentGateway, setPaymentGateway] = useState<'paystack' | 'revenuecat'>('paystack');
+  
   
   const [exchangeRate, setExchangeRate] = useState<number>(1);
   const currencyCode = userProfile?.currency || 'USD';
@@ -126,7 +125,7 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
 
       const handleVerification = (response: any) => {
         setLoading(true);
-        fetch('/api/paystack/verify', {
+        fetch(`${import.meta.env.VITE_API_URL || ''}/api/paystack/verify`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -206,7 +205,7 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
   };
 
   const handleUpgrade = async () => {
-    if (paymentGateway === 'paystack') {
+    if (!isNative) {
       await payWithPaystack(selectedPlan);
       return;
     }
@@ -216,17 +215,8 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
     setSuccessMsg(null);
     try {
       let success = false;
-      if (isNative && bridge?.purchasePremium) {
+      if (bridge?.purchasePremium) {
         success = await bridge.purchasePremium(selectedPlan);
-      } else {
-        const productIdentifier = planIds[selectedPlan];
-        success = await revenueCat.purchaseProduct(productIdentifier);
-      }
-
-      // Web Sandbox fallback: successful paywall flow completes
-      if (!isNative) {
-        localStorage.setItem('youfi_premium', 'true');
-        success = true;
       }
 
       if (success) {
@@ -262,14 +252,12 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
           setError("No pre-existing native purchases were found for this account.");
         }
       } else {
-        const hasEntitlement = await revenueCat.checkProEntitlement();
-        if (hasEntitlement) {
-          localStorage.setItem('youfi_premium', 'true');
-          await refreshPremiumStatus();
+        const status = await refreshPremiumStatus();
+        if (status) {
           setSuccessMsg("Restored! Your active web premium entitlements were successfully verified.");
           if (onSuccess) onSuccess();
         } else {
-          setError("No pre-existing premium credentials found in RevenueCat.");
+          setError("No pre-existing premium credentials found.");
         }
       }
     } catch (err: any) {
@@ -351,51 +339,7 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
             </li>
           </ul>
           
-          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">Select Payment Method</p>
-          <div className="grid grid-cols-2 gap-2.5 mb-5" id="payment-gateway-selector">
-            <button
-              type="button"
-              onClick={() => setPaymentGateway('paystack')}
-              className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between ${
-                paymentGateway === 'paystack'
-                  ? 'border-emerald-500 bg-emerald-50/10 text-emerald-950 font-bold shadow-sm ring-1 ring-emerald-500'
-                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-              }`}
-              id="select-paystack-gateway"
-            >
-              <div className="flex items-center gap-2">
-                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${paymentGateway === 'paystack' ? 'border-emerald-500' : 'border-gray-300'}`}>
-                  {paymentGateway === 'paystack' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
-                </div>
-                <span className="text-xs font-black text-gray-900">Paystack</span>
-              </div>
-              <p className="text-[9px] text-gray-400 mt-1 pl-5 font-normal leading-tight">
-                Cards, Bank Transfer, USSD & <span className="font-semibold text-emerald-600">Android Google Pay</span>.
-              </p>
-              <span className="absolute top-2 right-2 bg-emerald-500 text-[6px] text-white font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-widest leading-none shadow-sm">Popular</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPaymentGateway('revenuecat')}
-              className={`p-3 rounded-2xl border text-left transition-all flex flex-col justify-between ${
-                paymentGateway === 'revenuecat'
-                  ? 'border-indigo-500 bg-indigo-50/10 text-indigo-950 font-bold shadow-sm ring-1 ring-indigo-500'
-                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-              }`}
-              id="select-revenuecat-gateway"
-            >
-              <div className="flex items-center gap-2">
-                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${paymentGateway === 'revenuecat' ? 'border-indigo-500' : 'border-gray-300'}`}>
-                  {paymentGateway === 'revenuecat' && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
-                </div>
-                <span className="text-xs font-black text-gray-900">Credit Card</span>
-              </div>
-              <p className="text-[9px] text-gray-400 mt-1 pl-5 font-normal leading-tight">
-                Standard credit cards via RevenueCat billing.
-              </p>
-            </button>
-          </div>
+          
 
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">Select Subscription Tier</p>
           <div className="space-y-4 mb-6">

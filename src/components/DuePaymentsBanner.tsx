@@ -55,7 +55,7 @@ export default function DuePaymentsBanner() {
           initial={{ opacity: 0, y: -50 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -30 }}
-          className="fixed top-2 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-xl"
+          className="fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-xl"
           id="due-payments-banner-wrapper"
         >
           <div className="bg-red-500 text-white rounded-2xl px-4 py-3.5 shadow-[0_10px_25px_-4px_rgba(239,68,68,0.4)] flex items-center justify-between gap-3 border border-red-400/30">

@@ -16,7 +16,10 @@ export const tables = {
   sales: 'sales',
   businessDebts: 'business_debts',
   businessIdeas: 'business_ideas',
-  upcomingPayments: 'upcoming_payments'
+  upcomingPayments: 'upcoming_payments',
+  userSubscriptions: 'user_subscriptions',
+  subscriptionTransactions: 'subscription_transactions',
+  accountDeletionRequests: 'account_deletion_requests'
 };
 
 export const moveToTrash = async (tableName: string, originalId: string, data: any) => {
@@ -549,3 +552,104 @@ export const fetchAllUserBusinessTransactions = async (userId: string) => {
     return [];
   }
 };
+
+export const fetchUserSubscription = async (userId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from(tables.userSubscriptions)
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.warn("Warning fetching user subscription:", error);
+    return null;
+  }
+};
+
+export const deleteUserAccount = async (accessToken?: string): Promise<boolean> => {
+  let token = accessToken;
+  if (!token) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    token = sessionData?.session?.access_token;
+  }
+
+  if (!token) {
+    throw new Error("You must be authenticated to delete your account.");
+  }
+
+  const response = await fetch('/api/account/delete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  const resData = await response.json().catch(() => ({}));
+
+  if (!response.ok || !resData.success) {
+    const errorMsg = resData.error || resData.message || `Account deletion failed with status ${response.status}`;
+    throw new Error(errorMsg);
+  }
+
+  return true;
+};
+
+/**
+ * Clears all locally cached user data across Dexie IndexedDB, localStorage, and Cache Storage.
+ */
+export const clearLocalUserData = async (): Promise<void> => {
+  // 1. Clear offline Dexie database tables
+  try {
+    if (localDb.transactions) await localDb.transactions.clear();
+    if (localDb.budgets) await localDb.budgets.clear();
+  } catch (dexieErr) {
+    console.warn("[Local Cleanup]: Warning clearing offline Dexie database:", dexieErr);
+  }
+
+  // 2. Clear YouFi-specific and user-specific localStorage keys
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        const lowerKey = key.toLowerCase();
+        if (
+          lowerKey.startsWith('youfi') ||
+          lowerKey.startsWith('offline') ||
+          lowerKey.startsWith('sb-') ||
+          lowerKey.includes('settings') ||
+          lowerKey.includes('privacy') ||
+          lowerKey.includes('currency') ||
+          lowerKey.includes('business') ||
+          lowerKey.includes('auth') ||
+          lowerKey.includes('profile') ||
+          lowerKey.includes('user')
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch (lsErr) {
+    console.warn("[Local Cleanup]: Warning clearing localStorage:", lsErr);
+  }
+
+  // 3. Clear Cache Storage caches used by PWA / Service Worker
+  try {
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      const cacheKeys = await window.caches.keys();
+      await Promise.all(
+        cacheKeys
+          .filter(name => name.toLowerCase().includes('youfi') || name.toLowerCase().includes('workbox') || name.toLowerCase().includes('app'))
+          .map(name => window.caches.delete(name))
+      );
+    }
+  } catch (cacheErr) {
+    console.warn("[Local Cleanup]: Warning clearing Cache Storage:", cacheErr);
+  }
+};
+
+

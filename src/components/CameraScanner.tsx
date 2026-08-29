@@ -104,7 +104,7 @@ export default function CameraScanner({ isOpen, onClose, onScanComplete }: Camer
       const dataUrl = canvas.toDataURL('image/png');
       const base64Data = dataUrl.split(',')[1];
       
-      const response = await fetch('/api/gemini/generate', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/gemini/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

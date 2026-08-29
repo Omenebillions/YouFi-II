@@ -25,7 +25,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const { businessId: businessIdParam } = useParams();
   
-  const { isPaywallOpen, paywallFeatureName, hidePaywall } = usePremium();
+  const { isPaywallOpen, paywallFeatureName, hidePaywall, isReadOnly, isTrial, trialEndsAt, showPaywall } = usePremium();
 
   // Custom hook-like behavior to extract businessId from pathname if not in params
   const businessIdMatch = location.pathname.match(/\/business\/([a-zA-Z0-9_-]+)/);
@@ -67,7 +67,7 @@ export default function Layout() {
 
   const loadSidebarBusinesses = async () => {
     try {
-      const { data } = await supabase.from('businesses').select('*').eq('user_id', user.id);
+      const { data } = await supabase.from('businesses').select('*').eq('user_id', user?.id);
       if (data) {
         setBusinesses(data.map((b: any) => {
           const meta = parseBusinessName(b.name);
@@ -97,12 +97,12 @@ export default function Layout() {
           <span> Data is saved locally and will sync when you reconnect.</span>
         </div>
       )}
-      <main className={`flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 ${isCoachPage ? 'pb-0' : isBusinessPage ? 'pb-8' : 'pb-32'} pt-4 relative z-0 hide-scrollbar`}>
+      <main className={`flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 ${isCoachPage ? 'pb-0' : isBusinessPage ? 'pb-8' : 'pb-[calc(8rem+env(safe-area-inset-bottom))]'} pt-4 relative z-0 hide-scrollbar`}>
         <Outlet />
       </main>
       
       {/* Global Hamburger Menu Button */}
-      <div className="fixed top-2 right-2 flex items-center gap-2 z-[60]">
+      <div className="fixed top-[calc(0.5rem+env(safe-area-inset-top))] right-2 flex items-center gap-2 z-[60]">
         <button 
           onClick={togglePrivacyMode}
           className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 bg-white border border-gray-100 text-gray-400 shadow-lg hover:bg-gray-50`}
@@ -240,7 +240,7 @@ export default function Layout() {
                     <Briefcase size={20} className="text-brand-600" />
                     <span>Business (SME)</span>
                  </Link>
-                 <Link to="/profile" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
+                 <Link to="/settings" className="flex items-center gap-4 text-gray-700 font-medium hover:bg-gray-50 p-3 rounded-xl transition-colors" onClick={() => setDrawerOpen(false)}>
                     <Settings size={20} className="text-gray-500" />
                     <span>Settings</span>
                  </Link>
@@ -330,7 +330,7 @@ export default function Layout() {
       
       {/* Personal Bottom Nav Wrapper */}
       {!isBusinessPage && !location.pathname.includes('/coach') && !location.pathname.includes('/living-expenses') && !isModalOpen ? (
-        <nav className="print:hidden fixed bottom-2 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-30 shadow-xl">
+        <nav className="print:hidden fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-30 shadow-xl">
           <NavItem to="/" icon={<Home size={22} />} isActive={location.pathname === '/'} />
           <NavItem to="/goals" icon={<Target size={22} />} isActive={location.pathname === '/goals'} />
           
@@ -375,7 +375,7 @@ export default function Layout() {
               </div>
             </div>
           )}
-          <nav className="print:hidden fixed bottom-2 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-40 shadow-xl">
+          <nav className="print:hidden fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-md bg-white/80 backdrop-blur-md border border-gray-100 rounded-full flex justify-around items-center px-6 py-4 z-40 shadow-xl">
             <NavItem to={`/business/${businessId}`} icon={<Home size={22} />} isActive={location.pathname === `/business/${businessId}`} />
             <NavItem to={`/business/${businessId}/goals`} icon={<Target size={22} />} isActive={location.pathname.includes('/goals')} />
             

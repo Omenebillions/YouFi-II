@@ -57,7 +57,7 @@ export default function UpcomingPayments() {
     const fetchPayments = async (isColSupported: boolean) => {
       let query = supabase.from('upcoming_payments')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', user?.id)
         .order('due_date', { ascending: true });
         
       if (isColSupported) {
@@ -118,7 +118,7 @@ export default function UpcomingPayments() {
         savedRow = data;
       } else {
         const { data } = await supabase.from('upcoming_payments').insert({
-          user_id: user.id,
+          user_id: user?.id,
           title: formData.title,
           amount: parseFloat(formData.amount),
           due_date: formData.dueDate,
@@ -168,7 +168,7 @@ export default function UpcomingPayments() {
 
       // Record a real personal expense transaction for this paid reminder
       await supabase.from('transactions').insert({
-        user_id: user.id,
+        user_id: user?.id,
         type: 'expense',
         amount: payment.amount,
         category: 'bills',

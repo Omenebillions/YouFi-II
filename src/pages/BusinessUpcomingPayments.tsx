@@ -99,7 +99,7 @@ export default function BusinessUpcomingPayments() {
       try {
         let query = supabase.from('upcoming_payments')
           .select('*')
-          .eq('user_id', user.id);
+          .eq('user_id', user?.id);
 
         if (isColSupported) {
           query = query.eq('business_id', businessId);
@@ -171,7 +171,7 @@ export default function BusinessUpcomingPayments() {
         savedRow = data;
       } else {
         const insertPayload: any = {
-          user_id: user.id,
+          user_id: user?.id,
           title: dbTitle,
           amount: parseFloat(formData.amount),
           due_date: formData.dueDate,
@@ -231,7 +231,7 @@ export default function BusinessUpcomingPayments() {
 
       // Record a real business expense transaction for this paid commitment
       await supabase.from('business_transactions').insert({
-        user_id: user.id,
+        user_id: user?.id,
         business_id: businessId,
         type: 'expense',
         amount: payment.amount,

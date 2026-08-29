@@ -185,7 +185,7 @@ export default function AutoImport() {
             }
 
             // Enhanced AI Prompt for raw text
-            const res = await fetch('/api/gemini/generate', {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/gemini/generate`, {
                method: 'POST',
                headers: { 'Content-Type': 'application/json' },
                body: JSON.stringify({
@@ -302,7 +302,7 @@ export default function AutoImport() {
 
             contentParts.push({ text: "Extract all transaction records from this statement. Look for indicators such as 'DEBIT', 'CREDIT', amounts, and dates. Apply regex patterns to identify them. Categorize each transaction appropriately. The output must be JSON matching the schema." });
     
-            const res = await fetch('/api/gemini/generate', {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/gemini/generate`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

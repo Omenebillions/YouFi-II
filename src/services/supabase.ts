@@ -27,8 +27,14 @@ export const supabase = createClient(
       detectSessionInUrl: isValidUrl
     },
     global: {
-      fetch: isValidUrl ? fetch : async (...args) => {
-        console.warn('Supabase is using mock fetch because credentials are not configured.');
+      fetch: isValidUrl ? fetch : async (input: any, ...args) => {
+        const urlStr = typeof input === 'string' ? input : input?.url || '';
+        if (urlStr.includes('/auth/v1/')) {
+          return new Response(JSON.stringify({ user: null, session: null }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
         return new Response(JSON.stringify([]), { 
           status: 200, 
           headers: { 'Content-Type': 'application/json' } 
@@ -37,3 +43,4 @@ export const supabase = createClient(
     }
   }
 );
+

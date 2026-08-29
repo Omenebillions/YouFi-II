@@ -322,7 +322,7 @@ export default function BusinessDashboard() {
     return formatCurrencyGlobal(val, currencyCode, isPrivacyMode);
   };
 
-  const netProfit = stats.monthlyNetProfit;
+  const netProfit = stats.lifetimeNetProfit;
 
   const healthMetrics = React.useMemo(() => {
     let score = 50;
@@ -523,14 +523,14 @@ export default function BusinessDashboard() {
       <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm mb-6">
          <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-gray-900 flex items-center gap-2">
-               <PieChart size={18} className="text-brand-600" /> This Month's Net Profit
+               <PieChart size={18} className="text-brand-600" /> Overall Net Profit
             </h3>
             <span className={`text-[10px] font-extrabold px-2 py-1 rounded-lg ${netProfit >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                {netProfit >= 0 ? 'Profitable' : 'Loss'}
             </span>
          </div>
          <div className="text-3xl font-extrabold text-gray-900 mb-2">{formatCurrency(netProfit)}</div>
-         <p className="text-xs text-gray-500 font-medium">calculated as Total Income (Sales + Other Income) minus Operating Expenses for the current month.</p>
+         <p className="text-xs text-gray-500 font-medium">calculated as Total Income (Sales + Other Income) minus Total Operating Expenses.</p>
          {stats.debts > 0 && (
            <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
               <span className="text-xs text-red-500 font-bold flex items-center gap-1"><AlertCircle size={14} /> Outstanding Debt:</span>
@@ -574,7 +574,7 @@ export default function BusinessDashboard() {
                      <RechartsTooltip 
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
                         cursor={{ fill: '#F3F4F6' }}
-                        formatter={(value: number) => [formatCurrency(value), '']}
+                        formatter={(value: any) => [formatCurrency(value), '']}
                         labelStyle={{ color: '#4B5563', fontWeight: 'bold', marginBottom: '4px' }}
                      />
                      <Bar dataKey="income" name="Income" fill="#34D399" radius={[4, 4, 0, 0]} maxBarSize={40} />

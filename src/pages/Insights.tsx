@@ -265,7 +265,7 @@ export default function Insights() {
                   <RechartsTooltip 
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     cursor={{ fill: '#F3F4F6' }}
-                    formatter={(value: number, name: string) => [formatCurrency(value, currencyCode), name.charAt(0).toUpperCase() + name.slice(1)]}
+                    formatter={(value: any, name: any) => [formatCurrency(value, currencyCode), name.charAt(0).toUpperCase() + name.slice(1)]}
                     labelStyle={{ color: '#4B5563', fontWeight: 'bold', marginBottom: '4px' }}
                   />
                   <Bar dataKey="income" name="Income" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={24} />
@@ -429,7 +429,7 @@ export default function Insights() {
               <div className="w-full h-48 relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <RechartsTooltip formatter={(val: number) => formatCurrency(val, currencyCode)} />
+                    <RechartsTooltip formatter={(val: any) => formatCurrency(val, currencyCode)} />
                     <Pie
                       data={chartData}
                       cx="50%"

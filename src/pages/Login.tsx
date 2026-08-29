@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import { ShieldAlert } from 'lucide-react';
+import { Navigate, Link } from 'react-router-dom';
+import { ShieldAlert, Sparkles } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
-  const { user, signInWithGoogle, signInEmail, signUpEmail, resetPassword } = useAuth();
+  const { user, signInWithGoogle, signInEmail, signUpEmail, signInAsGuest, resetPassword } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -73,8 +73,20 @@ export default function Login() {
     }
   };
 
+  const handleGuestSignIn = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await signInAsGuest();
+    } catch (err: any) {
+      setError(err.message || 'Failed to initialize demo session.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 px-4">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 px-4 py-8">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden p-8 flex flex-col items-center text-center">
         <div className="w-20 h-20 bg-white border border-gray-100 shadow-sm rounded-2xl flex items-center justify-center mb-4 overflow-hidden p-2">
           <img 
@@ -166,24 +178,24 @@ export default function Login() {
           <button 
             type="submit"
             disabled={loading}
-            className="w-full bg-brand-600 border border-transparent text-white hover:bg-brand-500 py-3.5 px-4 rounded-xl font-semibold transition-colors mt-2"
+            className="w-full bg-brand-600 border border-transparent text-white hover:bg-brand-500 py-3.5 px-4 rounded-xl font-semibold transition-colors mt-2 cursor-pointer disabled:opacity-50"
           >
             {loading ? 'Please wait...' : (isLogin ? 'Log In' : 'Create Account')}
           </button>
         </form>
 
-        <div className="w-full flex items-center gap-4 my-6">
+        <div className="w-full flex items-center gap-4 my-5">
             <div className="h-px bg-gray-200 flex-1"></div>
             <span className="text-xs text-gray-400 font-medium">OR</span>
             <div className="h-px bg-gray-200 flex-1"></div>
         </div>
 
-        <div className="w-full space-y-4 flex flex-col items-center">
+        <div className="w-full space-y-3 flex flex-col items-center">
           <button 
             type="button"
             onClick={handleGoogleSignIn}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 py-3.5 px-4 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 py-3 px-4 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {loading ? (
               <span className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></span>
@@ -192,13 +204,34 @@ export default function Login() {
             )}
             Continue with Google
           </button>
+
+          <button 
+            type="button"
+            onClick={handleGuestSignIn}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 py-3 px-4 rounded-xl font-semibold text-sm transition-colors cursor-pointer"
+          >
+            <Sparkles size={16} className="text-emerald-600" />
+            <span>Continue as Guest / Demo Mode</span>
+          </button>
         </div>
         
-        <div className="mt-6 flex items-center justify-center gap-2 text-xs text-gray-400">
-          <ShieldAlert size={14} />
-          <span>Secured with Supabase</span>
+        <div className="mt-6 flex flex-col items-center gap-3">
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <ShieldAlert size={14} />
+            <span>Encrypted & Private</span>
+          </div>
+
+          <div className="flex items-center gap-3 text-[11px] text-gray-400 font-medium">
+            <Link to="/privacy" className="hover:text-gray-600 transition-colors">Privacy</Link>
+            <span>•</span>
+            <Link to="/terms" className="hover:text-gray-600 transition-colors">Terms</Link>
+            <span>•</span>
+            <Link to="/delete-account" className="hover:text-red-600 transition-colors">Delete Account</Link>
+          </div>
         </div>
       </div>
     </div>
   );
 }
+

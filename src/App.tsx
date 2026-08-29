@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PremiumProvider } from './contexts/PremiumContext';
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext';
@@ -17,6 +17,7 @@ import AddTransaction from './pages/AddTransaction';
 import Coach from './pages/Coach';
 import Insights from './pages/Insights';
 import Goals from './pages/Goals';
+import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import HistoryPage from './pages/HistoryPage';
 import AutoImport from './pages/AutoImport';
@@ -40,12 +41,18 @@ import Pricing from './pages/Pricing';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import RefundPolicy from './pages/RefundPolicy';
+import DeleteAccountRequest from './pages/DeleteAccountRequest';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-gray-50">Loading...</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-gray-500 gap-3">
+        <div className="w-9 h-9 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-xs font-bold text-gray-400 tracking-wide uppercase">Loading YouFi...</p>
+      </div>
+    );
   }
   
   if (!user) {
@@ -111,12 +118,17 @@ export default function App() {
           <NotificationProvider>
             <UIProvider>
             <PWAInstallPrompt />
-            <BrowserRouter>
+            <Router>
               
                 <AppInitializer />
                 <Routes>
                   <Route path="/login" element={<Login />} />
                   <Route path="/auth/callback" element={<AuthCallback />} />
+                  <Route path="/delete-account" element={<DeleteAccountRequest />} />
+                  <Route path="/privacy" element={<Privacy />} />
+                  <Route path="/terms" element={<Terms />} />
+                  <Route path="/refundpolicy" element={<RefundPolicy />} />
+                  <Route path="/pricing" element={<Pricing />} />
                   
                   <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
                     <Route index element={<Dashboard />} />
@@ -125,7 +137,8 @@ export default function App() {
                     <Route path="coach" element={<Coach />} />
                     <Route path="insights" element={<Insights />} />
                     <Route path="goals" element={<Goals />} />
-                    <Route path="profile" element={<Profile />} />
+                    <Route path="settings" element={<Settings />} />
+                    <Route path="profile" element={<Navigate to="/settings" replace />} />
                     <Route path="history" element={<HistoryPage />} />
                     <Route path="history/:type" element={<HistoryPage />} />
                     <Route path="business" element={<BusinessList />} />
@@ -149,7 +162,7 @@ export default function App() {
                   </Route>
                 </Routes>
               
-            </BrowserRouter>
+            </Router>
             </UIProvider>
           </NotificationProvider>
         </PrivacyProvider>
