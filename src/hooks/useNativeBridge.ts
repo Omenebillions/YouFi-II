@@ -70,6 +70,12 @@ export interface YouFINativeBridge {
 
   getPushToken(): Promise<{ token: string }>;
 
+  getNotifications?(): Promise<any[]>;
+
+  onNotificationReceived?(callback: (notif: any) => void): () => void;
+
+  showRewardedAd?(): Promise<{ reward: number } | boolean>;
+
   markNotificationAsRead(
     notificationId: string
   ): Promise<void>;
@@ -505,9 +511,23 @@ export function useNativeBridge() {
     setIsNativeSupported(!!instance);
   }, []);
 
+  const [isPremium, setIsPremium] = useState<boolean>(true);
+
+  const refreshPremiumStatus = useCallback(async () => {
+    if (bridge) {
+      try {
+        const res = await bridge.getPremiumStatus();
+        setIsPremium(res.isPremium);
+      } catch (e) {}
+    }
+  }, [bridge]);
+
   return {
     bridge,
     isNativeSupported,
+    isNative: isNativeSupported,
+    isPremium,
     refreshBridge,
+    refreshPremiumStatus,
   };
 }

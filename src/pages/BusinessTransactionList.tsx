@@ -149,11 +149,12 @@ export default function BusinessTransactionList() {
     try {
       if (bridge?.showRewardedAd) {
         const result = await bridge.showRewardedAd();
-        if (result && result.reward > 0) {
-          const nextLimit = transactionLimit + result.reward;
+        const rewardAmount = typeof result === 'object' && result && 'reward' in result ? result.reward : (result === true ? 15 : 0);
+        if (rewardAmount > 0) {
+          const nextLimit = transactionLimit + rewardAmount;
           setTransactionLimit(nextLimit);
           localStorage.setItem(`youfi_limit_${businessId}`, String(nextLimit));
-          alert(`Congratulations! You earned +${result.reward} transactions limit! Total allowed: ${nextLimit}`);
+          alert(`Congratulations! You earned +${rewardAmount} transactions limit! Total allowed: ${nextLimit}`);
         } else {
           alert("Ad was cancelled. Finish watching the video to secure extra transactions.");
         }

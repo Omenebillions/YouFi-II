@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { User } from '@supabase/supabase-js';
 import { createUserProfile, fetchUser, deleteUserAccount, clearLocalUserData } from '../services/db';
@@ -24,7 +24,7 @@ const getRedirectUrl = () => {
   return `${window.location.origin}/auth/callback`;
 };
 
-const createLocalGuestUser = (email = 'alex.rivera@youfi.app', name = 'Alex Rivera'): User => ({
+const createLocalGuestUser = (email = 'guest@youfi.app', name = 'Guest User'): User => ({
   id: 'guest_user_' + (email.replace(/[^a-zA-Z0-9]/g, '_') || 'demo'),
   app_metadata: { provider: 'email' },
   user_metadata: { full_name: name },
@@ -56,78 +56,116 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const currentUserIdRef = useRef<string | null>(null);
+
+  const handleAuthChange = async (currentUser: User | null) => {
+    if (!currentUser) {
+      currentUserIdRef.current = null;
+      setUser(null);
+      setUserProfile(null);
+      setLoading(false);
+      return;
+    }
+
+    // If switching users, immediately clear prior user's profile to prevent flash of wrong data
+    if (currentUserIdRef.current && currentUserIdRef.current !== currentUser.id) {
+      setUserProfile(null);
+    }
+    currentUserIdRef.current = currentUser.id;
+    setUser(currentUser);
+
+    try {
+      let profile = await fetchUser(currentUser.id);
+      if (!profile) {
+        // Check user-scoped stored profile in localStorage
+        const storedProfile = localStorage.getItem(`youfi_profile_${currentUser.id}`);
+        if (storedProfile) {
+          try {
+            profile = JSON.parse(storedProfile);
+          } catch (e) {}
+        }
+        
+        if (!profile) {
+          // Initialize default profile for first-time login
+          const data = {
+            email: currentUser.email || '',
+            name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'YouFi Member',
+            income: 0,
+            currency: 'USD'
+          };
+          await createUserProfile(currentUser.id, data).catch(() => {});
+          profile = { id: currentUser.id, ...data };
+        }
+      }
+
+      if (profile && currentUserIdRef.current === currentUser.id) {
+        setUserProfile(profile);
+        try {
+          localStorage.setItem(`youfi_profile_${currentUser.id}`, JSON.stringify(profile));
+        } catch (e) {}
+      }
+    } catch (error: any) {
+      console.warn("[AuthContext]: Warning fetching user profile:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
     let isMounted = true;
-    
+
     const initializeAuth = async () => {
-      // Short timeout to guarantee app never hangs on missing/slow Supabase backend
-      timeoutId = setTimeout(() => {
-        if (isMounted) {
-          try {
-            const hasLoggedOut = localStorage.getItem('youfi_logged_out') === 'true';
-            const savedLocal = localStorage.getItem('youfi_local_user');
-            if (savedLocal && !hasLoggedOut) {
-              const parsed = JSON.parse(savedLocal);
-              handleAuthChange(parsed);
-            } else if (!hasLoggedOut) {
-              const guest = createLocalGuestUser('alex.rivera@youfi.app', 'Alex Rivera');
-              handleAuthChange(guest);
-            } else {
-              handleAuthChange(null);
-            }
-          } catch (e) {
-            handleAuthChange(null);
-          }
-          setLoading(false);
-        }
-      }, 500);
-      
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (isMounted) {
-          if (session?.user) {
-            localStorage.removeItem('youfi_logged_out');
-            await handleAuthChange(session.user);
-          } else {
-            const hasLoggedOut = localStorage.getItem('youfi_logged_out') === 'true';
-            const savedLocal = localStorage.getItem('youfi_local_user');
-            if (savedLocal && !hasLoggedOut) {
-              const parsed = JSON.parse(savedLocal);
-              await handleAuthChange(parsed);
-            } else if (!hasLoggedOut) {
-              // Direct access on first launch
-              const guest = createLocalGuestUser('alex.rivera@youfi.app', 'Alex Rivera');
-              localStorage.setItem('youfi_local_user', JSON.stringify(guest));
-              await handleAuthChange(guest);
-            } else {
-              await handleAuthChange(null);
-            }
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.warn("[AuthContext]: Session retrieval error:", error.message);
+        }
+
+        if (!isMounted) return;
+
+        if (session?.user) {
+          localStorage.removeItem('youfi_logged_out');
+          await handleAuthChange(session.user);
+        } else {
+          // Check if explicit guest session exists and user didn't log out
+          const hasLoggedOut = localStorage.getItem('youfi_logged_out') === 'true';
+          const savedGuest = localStorage.getItem('youfi_guest_user');
+          
+          if (savedGuest && !hasLoggedOut) {
+            try {
+              const parsed = JSON.parse(savedGuest);
+              if (parsed?.id) {
+                await handleAuthChange(parsed);
+                return;
+              }
+            } catch (e) {}
           }
+
+          // No active session — show unauthenticated state
+          await handleAuthChange(null);
         }
       } catch (error: any) {
-        console.warn("Auth initialization warning:", error);
-        try {
-          const hasLoggedOut = localStorage.getItem('youfi_logged_out') === 'true';
-          if (!hasLoggedOut && isMounted) {
-            const guest = createLocalGuestUser('alex.rivera@youfi.app', 'Alex Rivera');
-            await handleAuthChange(guest);
-          }
-        } catch (e) {}
+        console.warn("[AuthContext]: Auth initialization error:", error);
+        if (isMounted) {
+          await handleAuthChange(null);
+        }
       } finally {
-        if (timeoutId) clearTimeout(timeoutId);
         if (isMounted) {
           setLoading(false);
         }
       }
     };
-    
+
     initializeAuth();
-    
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (isMounted && session?.user) {
-        handleAuthChange(session.user);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
+
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        await handleAuthChange(null);
+      } else if (session?.user) {
+        localStorage.removeItem('youfi_logged_out');
+        await handleAuthChange(session.user);
       }
     });
 
@@ -146,57 +184,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isMounted = false;
       subscription.unsubscribe();
       window.removeEventListener('message', handleMessage);
-      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
-
-  const handleAuthChange = async (currentUser: User | null) => {
-    setUser(currentUser);
-    if (currentUser) {
-      try {
-        let profile = await fetchUser(currentUser.id);
-        if (!profile) {
-          // Check local stored profile
-          const storedProfile = localStorage.getItem(`youfi_profile_${currentUser.id}`);
-          if (storedProfile) {
-            profile = JSON.parse(storedProfile);
-          } else {
-            // First time login
-            const data = {
-              email: currentUser.email || '',
-              name: currentUser.user_metadata?.full_name || 'YouFi Member',
-              income: 4500,
-              currency: 'USD'
-            };
-            await createUserProfile(currentUser.id, data).catch(() => {});
-            profile = { id: currentUser.id, ...data };
-            try {
-              localStorage.setItem(`youfi_profile_${currentUser.id}`, JSON.stringify(profile));
-            } catch (e) {}
-          }
-        }
-        setUserProfile(profile);
-      } catch (error: any) {
-        console.warn("Warning fetching user profile:", error);
-      }
-    } else {
-      setUserProfile(null);
-    }
-    setLoading(false);
-  };
 
   const signInAsGuest = async () => {
     setLoading(true);
     try {
       localStorage.removeItem('youfi_logged_out');
-      const guest = createLocalGuestUser('alex.rivera@youfi.app', 'Alex Rivera');
-      localStorage.setItem('youfi_local_user', JSON.stringify(guest));
-      localStorage.setItem('youfi_premium', 'true');
+      const guest = createLocalGuestUser('guest@youfi.app', 'Guest Explorer');
+      localStorage.setItem('youfi_guest_user', JSON.stringify(guest));
       const profile = {
         id: guest.id,
-        name: 'Alex Rivera',
+        name: 'Guest Explorer',
         email: guest.email,
-        income: 5400,
+        income: 3500,
         currency: 'USD'
       };
       localStorage.setItem(`youfi_profile_${guest.id}`, JSON.stringify(profile));
@@ -255,43 +256,28 @@ ${window.location.origin}/auth/callback
   };
 
   const signUpEmail = async (email: string, pass: string, name: string) => {
-    try {
-      localStorage.removeItem('youfi_logged_out');
-      const { error } = await supabase.auth.signUp({
-        email,
-        password: pass,
-        options: {
-          data: {
-            full_name: name
-          },
-          emailRedirectTo: getRedirectUrl()
-        }
-      });
+    localStorage.removeItem('youfi_logged_out');
+    const { error } = await supabase.auth.signUp({
+      email,
+      password: pass,
+      options: {
+        data: {
+          full_name: name
+        },
+        emailRedirectTo: getRedirectUrl()
+      }
+    });
 
-      if (error) throw error;
-    } catch (error: any) {
-      console.warn("Supabase sign up warning, providing offline fallback session:", error);
-      // If Supabase is unconfigured, seamlessly create offline session so user can continue
-      const localUser = createLocalGuestUser(email, name || 'YouFi Member');
-      localStorage.setItem('youfi_local_user', JSON.stringify(localUser));
-      await handleAuthChange(localUser);
-    }
+    if (error) throw error;
   };
 
   const signInEmail = async (email: string, pass: string) => {
-    try {
-      localStorage.removeItem('youfi_logged_out');
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password: pass
-      });
-      if (error) throw error;
-    } catch (error: any) {
-      console.warn("Supabase sign in warning, providing offline fallback session:", error);
-      const localUser = createLocalGuestUser(email, email.split('@')[0]);
-      localStorage.setItem('youfi_local_user', JSON.stringify(localUser));
-      await handleAuthChange(localUser);
-    }
+    localStorage.removeItem('youfi_logged_out');
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: pass
+    });
+    if (error) throw error;
   };
 
   const resetPassword = async (email: string) => {
@@ -304,11 +290,13 @@ ${window.location.origin}/auth/callback
   const logout = async () => {
     try {
       localStorage.setItem('youfi_logged_out', 'true');
-      localStorage.removeItem('youfi_local_user');
+      localStorage.removeItem('youfi_guest_user');
+      await clearLocalUserData();
       await supabase.auth.signOut();
     } catch (error) {
       console.error("Sign out error", error);
     } finally {
+      currentUserIdRef.current = null;
       setUser(null);
       setUserProfile(null);
     }
@@ -316,7 +304,7 @@ ${window.location.origin}/auth/callback
 
   const deleteAccount = async () => {
     try {
-      localStorage.removeItem('youfi_local_user');
+      localStorage.removeItem('youfi_guest_user');
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
       
@@ -329,6 +317,7 @@ ${window.location.origin}/auth/callback
         await supabase.auth.signOut();
       } catch (signOutErr) {}
 
+      currentUserIdRef.current = null;
       setUser(null);
       setUserProfile(null);
     } catch (error) {

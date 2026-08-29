@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
+import { fetchBudgets } from '../services/db';
 import { useAuth } from '../contexts/AuthContext';
 import { format, addMonths, subMonths, startOfMonth } from 'date-fns';
 import { formatCurrency } from '../lib/currency';
@@ -161,19 +162,18 @@ export default function ExpensesPlanner() {
   const currentMonthStr = format(currentDate, 'yyyy-MM');
 
   const loadBudgets = async () => {
-    if (!user) return;
+    if (!user) {
+      setBudgets([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('budgets')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('period', currentMonthStr);
-
-      if (error) throw error;
+      const data = await fetchBudgets(user.id, currentMonthStr);
       setBudgets(data || []);
     } catch (err) {
       console.error("Error loading budgets", err);
+      setBudgets([]);
     } finally {
       setLoading(false);
     }

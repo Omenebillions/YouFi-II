@@ -139,10 +139,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       const combinedMap = new Map();
       bridgeNotifs.forEach(n => combinedMap.set(n.id, n));
       
-      // We read dynamic statuses from localStorage to keep track of 'read' state for dynamically generated ones
+      const storageKey = user?.id ? `youfi_dynamic_read_state_${user.id}` : 'youfi_dynamic_read_state_guest';
       let localReadState: Record<string, boolean> = {};
       try {
-        const stored = localStorage.getItem('youfi_dynamic_read_state');
+        const stored = localStorage.getItem(storageKey);
         if (stored) localReadState = JSON.parse(stored);
       } catch (e) {}
       
@@ -166,14 +166,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const markAsRead = async (id: string) => {
     try {
+      const storageKey = user?.id ? `youfi_dynamic_read_state_${user.id}` : 'youfi_dynamic_read_state_guest';
       if (id.startsWith('dynamic_')) {
         let localReadState: Record<string, boolean> = {};
         try {
-          const stored = localStorage.getItem('youfi_dynamic_read_state');
+          const stored = localStorage.getItem(storageKey);
           if (stored) localReadState = JSON.parse(stored);
         } catch (e) {}
         localReadState[id] = true;
-        localStorage.setItem('youfi_dynamic_read_state', JSON.stringify(localReadState));
+        localStorage.setItem(storageKey, JSON.stringify(localReadState));
       } else if (bridge) {
         await bridge.markNotificationAsRead(id);
       }
@@ -193,9 +194,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         await bridge.markAllAsRead();
       }
       
+      const storageKey = user?.id ? `youfi_dynamic_read_state_${user.id}` : 'youfi_dynamic_read_state_guest';
       let localReadState: Record<string, boolean> = {};
       try {
-        const stored = localStorage.getItem('youfi_dynamic_read_state');
+        const stored = localStorage.getItem(storageKey);
         if (stored) localReadState = JSON.parse(stored);
       } catch (e) {}
       
@@ -208,7 +210,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         return { ...n, read: true };
       }));
       
-      localStorage.setItem('youfi_dynamic_read_state', JSON.stringify(localReadState));
+      localStorage.setItem(storageKey, JSON.stringify(localReadState));
       setUnreadCount(0);
     } catch (error) {
       console.error('[NotificationContext] Error marking all as read:', error);

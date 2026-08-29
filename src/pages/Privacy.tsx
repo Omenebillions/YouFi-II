@@ -421,7 +421,7 @@ export default function Privacy() {
             Account deletion is permanent and cannot be undone.
           </p>
           <p className="text-xs sm:text-sm text-gray-600">
-            If you cannot access your account, you may submit an account deletion request through YouFi's public account-deletion process at <Link to="/delete-account" className="text-brand-600 font-bold underline hover:text-brand-700">youfi.finance/delete-account</Link> or contact us at:
+            If you cannot access your account, you may submit an account deletion request through YouFi's public account-deletion process at <Link to="/delete-account" className="text-brand-600 font-bold underline hover:text-brand-700">youfiapp.com/delete-account</Link> or contact us at:
           </p>
           <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200 flex items-center gap-3">
             <Mail size={18} className="text-brand-600 shrink-0" />

@@ -31,7 +31,7 @@ async function runSecurityTests() {
   // --- TEST 1: Anti-Account-Enumeration on Deletion Request ---
   console.log("--- 1. Anti-Account-Enumeration Tests ---");
   
-  const existingUserEmail = "testuser_security_existing@youfi.finance";
+  const existingUserEmail = "testuser_security_existing@youfiapp.com";
   const nonExistentEmail = "completely_unregistered_random_9948291@example.com";
 
   const res1 = await fetch(`${BASE_URL}/api/account/deletion-request`, {
@@ -87,7 +87,7 @@ async function runSecurityTests() {
   const validTokenData = await resValidToken.json();
   assert(resValidToken.status === 200, "Valid verification token returns HTTP 200");
   assert(validTokenData.valid === true, "Token reports valid: true");
-  assert(typeof validTokenData.maskedEmail === "string" && validTokenData.maskedEmail.includes("*"), "Masked email is returned for privacy (e.g. t***g@youfi.finance)");
+  assert(typeof validTokenData.maskedEmail === "string" && validTokenData.maskedEmail.includes("*"), "Masked email is returned for privacy (e.g. t***g@youfiapp.com)");
   assert(!!validTokenData.expiresAt, "Token has valid expiration timestamp");
 
   // --- TEST 4: Deletion Confirmation & Replay Prevention ---

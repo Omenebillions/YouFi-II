@@ -92,7 +92,7 @@ export default function RefundPolicy() {
           <p className="text-xs text-gray-600 leading-relaxed font-normal flex flex-wrap items-center gap-1">
             <Mail size={14} className="text-brand-600 inline shrink-0" />
             <span>To file a return claim, contact our billing desk directly at</span>
-            <span className="text-brand-600 font-bold hover:underline">billing@youfi.finance</span>
+            <span className="text-brand-600 font-bold hover:underline">billing@youfiapp.com</span>
             <span>representing your transaction ID.</span>
           </p>
         </div>

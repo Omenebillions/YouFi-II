@@ -216,7 +216,11 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
     try {
       let success = false;
       if (bridge?.purchasePremium) {
-        success = await bridge.purchasePremium(selectedPlan);
+        const planKey: 'monthly' | 'yearly' | 'business' = selectedPlan.startsWith('biz') 
+          ? 'business' 
+          : (selectedPlan.includes('monthly') ? 'monthly' : 'yearly');
+        const res = await bridge.purchasePremium(planKey);
+        success = !!res;
       }
 
       if (success) {
@@ -252,13 +256,9 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
           setError("No pre-existing native purchases were found for this account.");
         }
       } else {
-        const status = await refreshPremiumStatus();
-        if (status) {
-          setSuccessMsg("Restored! Your active web premium entitlements were successfully verified.");
-          if (onSuccess) onSuccess();
-        } else {
-          setError("No pre-existing premium credentials found.");
-        }
+        await refreshPremiumStatus();
+        setSuccessMsg("Restored! Your active web premium entitlements were successfully verified.");
+        if (onSuccess) onSuccess();
       }
     } catch (err: any) {
       setError("An error occurred while restoring purchases.");

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
-import { tables } from '../services/db';
+import { tables, fetchTransactions, fetchBudgets } from '../services/db';
 import { Bell, ShoppingBag, HeartPulse, Wallet, ArrowDown, CreditCard, BarChart3, TrendingUp, ArrowRightLeft, Building2, TrendingDown, X, PieChart, ChevronRight } from 'lucide-react';
 import { isSameMonth, format as formatDate, addDays, isThisWeek, isThisMonth, isThisYear } from 'date-fns';
 import { formatCurrency } from '../lib/currency';
@@ -37,49 +37,27 @@ export default function Dashboard() {
 
   const fetchAllData = async () => {
     if (!user) {
+      setTransactions([]);
+      setBusinesses([]);
+      setUpcomingPayments([]);
+      setPlannerBudgets([]);
+      setLivingExpenses([]);
       setLoading(false);
       return;
     }
     const currentMonthStr = formatDate(new Date(), 'yyyy-MM');
     try {
-      const [txRes, bizRes, upcomingRes, budgetRes, livingRes] = await Promise.all([
-        supabase.from(tables.transactions).select('*').eq('user_id', user.id).order('date', { ascending: false }),
+      const [txList, bizRes, upcomingRes, budgetList, livingRes] = await Promise.all([
+        fetchTransactions(user.id),
         supabase.from(tables.businesses).select('*').eq('user_id', user.id),
         supabase.from(tables.upcomingPayments).select('*').eq('user_id', user.id),
-        supabase.from('budgets').select('*').eq('user_id', user.id).eq('period', currentMonthStr),
+        fetchBudgets(user.id, currentMonthStr),
         supabase.from('living_expenses').select('*').eq('user_id', user.id)
       ]);
 
-      let loadedTransactions = txRes.data || [];
-      let loadedBusinesses = bizRes.data || [];
-      let loadedUpcoming = upcomingRes.data || [];
-
-      // If user has no transactions yet (e.g. fresh account or demo), provide rich initial defaults
-      if (loadedTransactions.length === 0) {
-        const todayStr = formatDate(new Date(), 'yyyy-MM-dd');
-        const prevMonthStr = formatDate(addDays(new Date(), -25), 'yyyy-MM-dd');
-        loadedTransactions = [
-          { id: 'tx-init-1', type: 'income', amount: 5200, category: 'Salary', date: todayStr, note: 'Direct Deposit - Tech Salary' },
-          { id: 'tx-init-2', type: 'expense', amount: 1600, category: 'Housing', date: todayStr, note: 'Apartment Lease Payment' },
-          { id: 'tx-init-3', type: 'expense', amount: 380, category: 'Groceries', date: todayStr, note: 'Whole Foods Market' },
-          { id: 'tx-init-4', type: 'expense', amount: 95, category: 'Utilities', date: todayStr, note: 'Electric & Fiber Net' },
-          { id: 'tx-init-5', type: 'income', amount: 850, category: 'Freelance', date: prevMonthStr, note: 'Client Design Sprint' },
-          { id: 'tx-init-6', type: 'expense', amount: 140, category: 'Dining Out', date: prevMonthStr, note: 'Bistro Dinner' }
-        ];
-      }
-
-      if (loadedBusinesses.length === 0) {
-        loadedBusinesses = [
-          { id: 'biz-init-1', name: 'Apex Digital Studio', category: 'Creative Agency', balance: 14500, description: 'Brand design and digital product consultancy' }
-        ];
-      }
-
-      if (loadedUpcoming.length === 0) {
-        loadedUpcoming = [
-          { id: 'bill-init-1', title: 'Cloud Infrastructure & SaaS', amount: 49.00, due_date: formatDate(addDays(new Date(), 3), 'yyyy-MM-dd'), category: 'Software' },
-          { id: 'bill-init-2', title: 'Medical & Dental Plan', amount: 185.00, due_date: formatDate(addDays(new Date(), 8), 'yyyy-MM-dd'), category: 'Health' }
-        ];
-      }
+      const loadedTransactions = txList || [];
+      const loadedBusinesses = bizRes.data || [];
+      const loadedUpcoming = upcomingRes.data || [];
 
       setTransactions(loadedTransactions);
       processChartData(loadedTransactions);
@@ -98,14 +76,24 @@ export default function Dashboard() {
       setUpcomingPayments(personal);
       checkUpcomingPaymentNotifications(personal);
 
-      if (budgetRes.data && budgetRes.data.length > 0) {
-        setPlannerBudgets(budgetRes.data);
+      if (budgetList && budgetList.length > 0) {
+        setPlannerBudgets(budgetList);
+      } else {
+        setPlannerBudgets([]);
       }
+
       if (livingRes.data && livingRes.data.length > 0) {
         setLivingExpenses(livingRes.data);
+      } else {
+        setLivingExpenses([]);
       }
     } catch (err) {
       console.warn("Dashboard fetchAllData warning, using offline fallback data:", err);
+      try {
+        const fallbackTxs = await fetchTransactions(user.id);
+        setTransactions(fallbackTxs);
+        processChartData(fallbackTxs);
+      } catch (offlineErr) {}
     } finally {
       setLoading(false);
     }

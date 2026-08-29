@@ -98,7 +98,7 @@ export default function Terms() {
             6. Inquiries and Contacts
           </h2>
           <p className="text-xs text-gray-600 leading-relaxed font-normal">
-            For operational legal inquiries, contact the compliance support desk directly at <span className="text-brand-600 font-bold">compliance@youfi.finance</span>.
+            For operational legal inquiries, contact the compliance support desk directly at <span className="text-brand-600 font-bold">compliance@youfiapp.com</span>.
           </p>
         </div>
       </div>

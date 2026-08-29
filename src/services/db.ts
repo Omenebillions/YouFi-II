@@ -1,5 +1,14 @@
 import { supabase } from './supabase';
-import { localDb, storeOfflineTransaction, getOfflineTransactions } from '../db';
+import { 
+  localDb, 
+  storeOfflineTransaction, 
+  getOfflineTransactions,
+  storeOfflineBudget,
+  getOfflineBudgets,
+  deleteOfflineTransaction,
+  clearUserOfflineData,
+  clearAllOfflineData
+} from '../db';
 import { parseBusinessName } from '../lib/business';
 
 export const tables = {
@@ -39,6 +48,10 @@ export const moveToTrash = async (tableName: string, originalId: string, data: a
 };
 
 export const fetchTransactions = async (userId: string): Promise<any[]> => {
+  if (!userId || typeof userId !== 'string') {
+    return [];
+  }
+
   try {
     const { data, error } = await supabase
       .from(tables.transactions)
@@ -50,22 +63,22 @@ export const fetchTransactions = async (userId: string): Promise<any[]> => {
     
     const remoteData = (data || []).map((tx: any) => ({
       ...tx,
+      user_id: userId,
       note: tx.note !== undefined ? tx.note : tx.description
     }));
 
-    // Cache to Dexie
+    // Upsert remote data into user-scoped Dexie store
     if (remoteData.length > 0) {
-      await localDb.transactions.clear();
       for (const tx of remoteData) {
-        await storeOfflineTransaction({ ...tx, synced: 1 });
+        await storeOfflineTransaction({ ...tx, user_id: userId, synced: 1 });
       }
     }
     
     return remoteData;
   } catch (error) {
-    console.warn("Offline fallback for fetching transactions due to error:", error);
+    console.warn("[DB Service]: Offline fallback for fetching transactions for user:", userId, error);
     try {
-      const fallback = await getOfflineTransactions();
+      const fallback = await getOfflineTransactions(userId);
       return fallback;
     } catch (e) {
       return [];
@@ -74,6 +87,10 @@ export const fetchTransactions = async (userId: string): Promise<any[]> => {
 };
 
 export const fetchRecentTransactions = async (userId: string, maxResults: number = 50): Promise<any[]> => {
+  if (!userId || typeof userId !== 'string') {
+    return [];
+  }
+
   try {
     const { data, error } = await supabase
       .from(tables.transactions)
@@ -85,13 +102,48 @@ export const fetchRecentTransactions = async (userId: string, maxResults: number
     if (error) throw error;
     return (data || []).map((tx: any) => ({
       ...tx,
+      user_id: userId,
       note: tx.note !== undefined ? tx.note : tx.description
     }));
   } catch (error) {
-    console.warn("Offline fallback for recent transactions due to error:", error);
+    console.warn("[DB Service]: Offline fallback for recent transactions for user:", userId, error);
     try {
-      const fallback = await getOfflineTransactions();
+      const fallback = await getOfflineTransactions(userId);
       return fallback.slice(0, maxResults);
+    } catch (e) {
+      return [];
+    }
+  }
+};
+
+export const fetchBudgets = async (userId: string, period?: string): Promise<any[]> => {
+  if (!userId || typeof userId !== 'string') {
+    return [];
+  }
+
+  try {
+    let query = supabase
+      .from(tables.budgets)
+      .select('*')
+      .eq('user_id', userId);
+
+    if (period) {
+      query = query.eq('period', period);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const list = data || [];
+    // Cache to user-scoped offline store
+    for (const b of list) {
+      await storeOfflineBudget({ ...b, user_id: userId, synced: 1 });
+    }
+    return list;
+  } catch (error) {
+    console.warn("[DB Service]: Offline fallback for budgets for user:", userId, error);
+    try {
+      return await getOfflineBudgets(userId, period);
     } catch (e) {
       return [];
     }
@@ -118,15 +170,15 @@ export const addTransaction = async (data: any) => {
       
       // Store in offline db as synced
       if (insertedData?.[0]) {
-         await storeOfflineTransaction({ ...insertedData[0], synced: 1 });
+         await storeOfflineTransaction({ ...insertedData[0], user_id: userData.user.id, synced: 1 });
       }
       return insertedData?.[0]?.id;
     } catch (networkError) {
       console.log("Saving transaction offline. Network error:", networkError);
       
       // Save offline and mark unsynced
-      const offlineId = Date.now();
-      await storeOfflineTransaction({ ...finalData, id: offlineId, synced: 0 });
+      const offlineId = `offline-${Date.now()}`;
+      await storeOfflineTransaction({ ...finalData, id: offlineId, user_id: userData.user.id, synced: 0 });
       return offlineId;
     }
     
@@ -139,6 +191,11 @@ export const addTransaction = async (data: any) => {
 
 export const deleteTransaction = async (id: string) => {
   try {
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData?.user?.id) {
+      await deleteOfflineTransaction(userData.user.id, id);
+    }
+
     const { error } = await supabase
       .from(tables.transactions)
       .delete()
