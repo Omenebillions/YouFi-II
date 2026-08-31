@@ -182,7 +182,8 @@ export default function BusinessDashboard() {
     // Process Sales (Sales = Revenue)
     bSales.forEach(s => {
        const totalPrice = s.total_price || 0;
-       const profit = s.profit || 0;
+       const profit = s.profit !== undefined ? s.profit : totalPrice;
+       
        salesRev += totalPrice;
        salesProfit += profit;
        
@@ -205,7 +206,7 @@ export default function BusinessDashboard() {
     bTxs.forEach(tx => {
        if (tx.type === 'income') txRev += tx.amount;
        else txExp += tx.amount;
-
+       
        const dateStr = tx.date;
        if (dateStr) {
            if (dateStr.startsWith(currentMonthPrefix)) {
@@ -530,7 +531,7 @@ export default function BusinessDashboard() {
             </span>
          </div>
          <div className="text-3xl font-extrabold text-gray-900 mb-2">{formatCurrency(netProfit)}</div>
-         <p className="text-xs text-gray-500 font-medium">calculated as Total Income (Sales + Other Income) minus Total Operating Expenses.</p>
+         <p className="text-xs text-gray-500 font-medium">calculated as Total Income (Sales + Other Income) minus Total Expenses.</p>
          {stats.debts > 0 && (
            <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
               <span className="text-xs text-red-500 font-bold flex items-center gap-1"><AlertCircle size={14} /> Outstanding Debt:</span>

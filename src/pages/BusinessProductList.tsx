@@ -80,16 +80,37 @@ export default function BusinessProductList() {
           is_service: formData.isService
         }).eq('id', editingProduct.id);
       } else {
+        const costPrice = formData.costPrice ? parseFloat(formData.costPrice) : 0;
+        const stock = formData.isService ? 0 : (parseInt(formData.stock) || 0);
+
         await supabase.from('products').insert({
           name: formData.name,
-          cost_price: formData.costPrice ? parseFloat(formData.costPrice) : 0,
+          cost_price: costPrice,
           selling_price: formData.sellingPrice ? parseFloat(formData.sellingPrice) : 0,
           price: formData.sellingPrice ? parseFloat(formData.sellingPrice) : 0,
-          stock: formData.isService ? 0 : (parseInt(formData.stock) || 0),
+          stock: stock,
           is_service: formData.isService,
           business_id: businessId,
           user_id: user.id
         });
+
+        const totalExpense = costPrice * stock;
+        if (totalExpense > 0 && !formData.isService) {
+           const { data: biz } = await supabase.from('businesses').select('balance').eq('id', businessId).single();
+           if (biz) {
+             await supabase.from('businesses').update({ balance: (biz.balance || 0) - totalExpense }).eq('id', businessId);
+           }
+           await supabase.from('business_transactions').insert({
+              business_id: businessId,
+              user_id: user.id,
+              amount: totalExpense,
+              type: 'expense',
+              category: 'Inventory Purchase',
+              description: `Initial stock for ${formData.name} (${stock} units)`,
+              status: 'completed',
+              date: new Date().toISOString().split('T')[0]
+           });
+        }
       }
       
       setShowModal(false);

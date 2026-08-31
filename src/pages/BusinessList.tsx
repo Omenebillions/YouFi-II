@@ -139,7 +139,9 @@ export default function BusinessList() {
       if (!monthlyData[month]) {
         monthlyData[month] = { date: month, income: 0, expenses: 0 };
       }
+      
       totalSalesRev += data.total_price;
+      
       monthlyData[month].income += data.total_price;
     });
 

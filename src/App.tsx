@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PremiumProvider } from './contexts/PremiumContext';
@@ -14,37 +14,38 @@ import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { useNativeBridge } from './hooks/useNativeBridge';
 import { supabase } from './services/supabase';
 import Layout from './components/Layout';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import AddTransaction from './pages/AddTransaction';
-import Coach from './pages/Coach';
-import Insights from './pages/Insights';
-import Goals from './pages/Goals';
-import Settings from './pages/Settings';
-import Profile from './pages/Profile';
-import HistoryPage from './pages/HistoryPage';
-import AutoImport from './pages/AutoImport';
-import BusinessList from './pages/BusinessList';
-import BusinessDashboard from './pages/BusinessDashboard';
-import BusinessProductList from './pages/BusinessProductList';
-import BusinessSaleList from './pages/BusinessSaleList';
-import BusinessTransactionList from './pages/BusinessTransactionList';
-import BusinessDebtList from './pages/BusinessDebtList';
-import BusinessCoach from './pages/BusinessCoach';
-import BusinessGoals from './pages/BusinessGoals';
-import LivingExpenses from './pages/LivingExpenses';
-import ExpensesPlanner from './pages/ExpensesPlanner';
-import UpcomingPayments from './pages/UpcomingPayments';
-import BusinessUpcomingPayments from './pages/BusinessUpcomingPayments';
-import TrashBin from './pages/TrashBin';
 
-import BusinessIdeas from './pages/BusinessIdeas';
-import AuthCallback from './pages/AuthCallback';
-import Pricing from './pages/Pricing';
-import Terms from './pages/Terms';
-import Privacy from './pages/Privacy';
-import RefundPolicy from './pages/RefundPolicy';
-import DeleteAccountRequest from './pages/DeleteAccountRequest';
+// Lazy loaded pages to optimize bundle size and speed up initial load
+const Login = React.lazy(() => import('./pages/Login'));
+const Dashboard = React.lazy(() => import('./pages/Dashboard'));
+const AddTransaction = React.lazy(() => import('./pages/AddTransaction'));
+const Coach = React.lazy(() => import('./pages/Coach'));
+const Insights = React.lazy(() => import('./pages/Insights'));
+const Goals = React.lazy(() => import('./pages/Goals'));
+const Settings = React.lazy(() => import('./pages/Settings'));
+const Profile = React.lazy(() => import('./pages/Profile'));
+const HistoryPage = React.lazy(() => import('./pages/HistoryPage'));
+const AutoImport = React.lazy(() => import('./pages/AutoImport'));
+const BusinessList = React.lazy(() => import('./pages/BusinessList'));
+const BusinessDashboard = React.lazy(() => import('./pages/BusinessDashboard'));
+const BusinessProductList = React.lazy(() => import('./pages/BusinessProductList'));
+const BusinessSaleList = React.lazy(() => import('./pages/BusinessSaleList'));
+const BusinessTransactionList = React.lazy(() => import('./pages/BusinessTransactionList'));
+const BusinessDebtList = React.lazy(() => import('./pages/BusinessDebtList'));
+const BusinessCoach = React.lazy(() => import('./pages/BusinessCoach'));
+const BusinessGoals = React.lazy(() => import('./pages/BusinessGoals'));
+const LivingExpenses = React.lazy(() => import('./pages/LivingExpenses'));
+const ExpensesPlanner = React.lazy(() => import('./pages/ExpensesPlanner'));
+const UpcomingPayments = React.lazy(() => import('./pages/UpcomingPayments'));
+const BusinessUpcomingPayments = React.lazy(() => import('./pages/BusinessUpcomingPayments'));
+const TrashBin = React.lazy(() => import('./pages/TrashBin'));
+const BusinessIdeas = React.lazy(() => import('./pages/BusinessIdeas'));
+const AuthCallback = React.lazy(() => import('./pages/AuthCallback'));
+const Pricing = React.lazy(() => import('./pages/Pricing'));
+const Terms = React.lazy(() => import('./pages/Terms'));
+const Privacy = React.lazy(() => import('./pages/Privacy'));
+const RefundPolicy = React.lazy(() => import('./pages/RefundPolicy'));
+const DeleteAccountRequest = React.lazy(() => import('./pages/DeleteAccountRequest'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -120,7 +121,12 @@ export default function App() {
             <PWAInstallPrompt />
             <Router>
               
-                <AppInitializer />
+              <AppInitializer />
+              <Suspense fallback={
+                <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+                  <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              }>
                 <Routes>
                   <Route path="/login" element={<Login />} />
                   <Route path="/auth/callback" element={<AuthCallback />} />
@@ -161,6 +167,7 @@ export default function App() {
                     <Route path="refundpolicy" element={<RefundPolicy />} />
                   </Route>
                 </Routes>
+              </Suspense>
               
             </Router>
             </UIProvider>
