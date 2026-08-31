@@ -80,7 +80,7 @@ export default function BusinessDashboard() {
     if (showLoader) setLoading(true);
 
     try {
-      const [bizRes, txRes, prodRes, salesRes, debtRes, recentRes, upcomingRes] = await Promise.all([
+      const [bizRes, txRes, prodRes, salesRes, debtRes, recentRes, upcomingRes] = await Promise.allSettled([
         supabase.from('businesses').select('*').eq('id', businessId).single(),
         supabase.from('business_transactions').select('*').eq('business_id', businessId).eq('user_id', user.id),
         supabase.from('products').select('*', { count: 'exact', head: true }).eq('business_id', businessId).eq('user_id', user.id),
@@ -90,17 +90,17 @@ export default function BusinessDashboard() {
         supabase.from('upcoming_payments').select('*').eq('user_id', user.id)
       ]);
 
-      if (bizRes.data) {
-        const meta = parseBusinessName(bizRes.data.name);
+      if (bizRes.status === 'fulfilled' && bizRes.value.data) {
+        const meta = parseBusinessName(bizRes.value.data.name);
         setBusiness({
-          ...bizRes.data,
+          ...bizRes.value.data,
           name: meta.name,
           category: meta.category,
           description: meta.description
         });
       }
-      if (txRes.data) {
-        setBTxs(txRes.data.map((row: any) => {
+      if (txRes.status === 'fulfilled' && txRes.value.data) {
+        setBTxs(txRes.value.data.map((row: any) => {
           const meta = parseBusinessTxCategory(row.category);
           return {
             ...row,
@@ -109,15 +109,15 @@ export default function BusinessDashboard() {
           };
         }));
       }
-      if (prodRes.count !== null) setProductsCount(prodRes.count);
-      if (salesRes.data) setBSales(salesRes.data);
-      if (debtRes.data) setBDebts(debtRes.data);
-      if (upcomingRes && upcomingRes.data) {
-        const bizUpcoming = upcomingRes.data.filter(p => p.business_id === businessId || (p.title && p.title.startsWith(`[Biz:${businessId}]`)));
+      if (prodRes.status === 'fulfilled' && prodRes.value.count !== null) setProductsCount(prodRes.value.count);
+      if (salesRes.status === 'fulfilled' && salesRes.value.data) setBSales(salesRes.value.data);
+      if (debtRes.status === 'fulfilled' && debtRes.value.data) setBDebts(debtRes.value.data);
+      if (upcomingRes.status === 'fulfilled' && upcomingRes.value && upcomingRes.value.data) {
+        const bizUpcoming = upcomingRes.value.data.filter(p => p.business_id === businessId || (p.title && p.title.startsWith(`[Biz:${businessId}]`)));
         setBUpcomingPayments(bizUpcoming);
       }
-      if (recentRes.data) {
-        setRecentTransactions(recentRes.data.map((row: any) => {
+      if (recentRes.status === 'fulfilled' && recentRes.value.data) {
+        setRecentTransactions(recentRes.value.data.map((row: any) => {
           const meta = parseBusinessTxCategory(row.category);
           return {
             ...row,

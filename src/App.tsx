@@ -8,6 +8,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PremiumProvider } from './contexts/PremiumContext';
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext';
+import { PrivacyProvider } from './contexts/PrivacyContext';
+import { UIProvider } from './contexts/UIContext';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { useNativeBridge } from './hooks/useNativeBridge';
 import { supabase } from './services/supabase';
 import Layout from './components/Layout';
@@ -105,10 +108,7 @@ function AppInitializer() {
 
 
 
-import { PrivacyProvider } from './contexts/PrivacyContext';
 
-import { UIProvider } from './contexts/UIContext';
-import PWAInstallPrompt from './components/PWAInstallPrompt';
 
 export default function App() {
   return (

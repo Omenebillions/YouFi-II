@@ -47,7 +47,7 @@ export default function Dashboard() {
     }
     const currentMonthStr = formatDate(new Date(), 'yyyy-MM');
     try {
-      const [txList, bizRes, upcomingRes, budgetList, livingRes] = await Promise.all([
+      const [txList, bizRes, upcomingRes, budgetList, livingRes] = await Promise.allSettled([
         fetchTransactions(user.id),
         supabase.from(tables.businesses).select('*').eq('user_id', user.id),
         supabase.from(tables.upcomingPayments).select('*').eq('user_id', user.id),
@@ -55,9 +55,11 @@ export default function Dashboard() {
         supabase.from('living_expenses').select('*').eq('user_id', user.id)
       ]);
 
-      const loadedTransactions = txList || [];
-      const loadedBusinesses = bizRes.data || [];
-      const loadedUpcoming = upcomingRes.data || [];
+      const loadedTransactions = txList.status === 'fulfilled' ? (txList.value || []) : [];
+      const loadedBusinesses = bizRes.status === 'fulfilled' ? (bizRes.value.data || []) : [];
+      const loadedUpcoming = upcomingRes.status === 'fulfilled' ? (upcomingRes.value.data || []) : [];
+      const loadedBudgets = budgetList.status === 'fulfilled' ? (budgetList.value || []) : [];
+      const loadedLiving = livingRes.status === 'fulfilled' ? (livingRes.value.data || []) : [];
 
       setTransactions(loadedTransactions);
       processChartData(loadedTransactions);
@@ -76,14 +78,14 @@ export default function Dashboard() {
       setUpcomingPayments(personal);
       checkUpcomingPaymentNotifications(personal);
 
-      if (budgetList && budgetList.length > 0) {
-        setPlannerBudgets(budgetList);
+      if (loadedBudgets.length > 0) {
+        setPlannerBudgets(loadedBudgets);
       } else {
         setPlannerBudgets([]);
       }
 
-      if (livingRes.data && livingRes.data.length > 0) {
-        setLivingExpenses(livingRes.data);
+      if (loadedLiving.length > 0) {
+        setLivingExpenses(loadedLiving);
       } else {
         setLivingExpenses([]);
       }
