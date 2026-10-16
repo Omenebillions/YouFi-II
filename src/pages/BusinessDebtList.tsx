@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, CreditCard, Sparkles,
-  Search, Calendar, CheckCircle2, AlertCircle, Trash2, Edit2, X, RotateCw, ChevronDown, ChevronUp, Check
+  Search, Calendar, CheckCircle2, AlertCircle, Trash2, Edit2, X, RotateCw, ChevronDown, ChevronUp, Check, Share2
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,8 +12,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import { generateRecurringPayments } from '../lib/debt';
 import { ModalTracker } from '../components/ModalTracker';
+import { useAppResume } from '../hooks/useAppResume';
 
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
+import { shareExpenseHistory } from '../lib/shareExpenseHistory';
 
 const parseLenderRecurrence = (fullLenderStr: string) => {
   if (!fullLenderStr) return { lender: '', isRecurring: false, frequency: '', duration: '', recurringAmount: 0, payments: [] as any[] };
@@ -80,6 +82,7 @@ export default function BusinessDebtList() {
   const { bridge, isPremium, refreshPremiumStatus } = useNativeBridge();
   
   const [debts, setDebts] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [expandedDebtId, setExpandedDebtId] = useState<string | null>(null);
   
@@ -153,6 +156,8 @@ export default function BusinessDebtList() {
       setLoading(false);
     }
   };
+
+  useAppResume(fetchDebts);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -523,6 +528,32 @@ export default function BusinessDebtList() {
   };
 
   const totals = getTotals();
+  const filteredDebts = debts.filter(debt => {
+    const lender = parseLenderRecurrence(debt.lender).lender.toLowerCase();
+    return lender.includes(searchTerm.trim().toLowerCase());
+  });
+
+  const handleShareDebts = async () => {
+    try {
+      await shareExpenseHistory(filteredDebts.map(debt => {
+        const recurrence = parseLenderRecurrence(debt.lender);
+        return {
+          date: debt.due_date || debt.created_at,
+          type: 'business debt',
+          category: recurrence.lender,
+          note: `Status: ${debt.status}${recurrence.isRecurring ? `; ${recurrence.frequency} recurring` : ''}`,
+          amount: Number(debt.amount) || 0,
+          currency: currencyCode,
+          frequency: recurrence.isRecurring ? recurrence.frequency : undefined,
+        };
+      }), 'youfi-business-debts-history.csv', 'Business debts history');
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        console.error('Could not share business debts history:', error);
+        window.alert(error instanceof Error ? error.message : 'Could not share business debts history.');
+      }
+    }
+  };
 
   return (
     <div className="flex flex-col tracking-tight pt-4 pb-24">
@@ -534,7 +565,13 @@ export default function BusinessDebtList() {
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
            <CreditCard className="text-red-500" /> Business Debts
         </h1>
-        <div className="w-4"></div>
+        <button
+          onClick={() => void handleShareDebts()}
+          disabled={filteredDebts.length === 0}
+          className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-100 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Share2 size={14} /> Share
+        </button>
       </div>
 
       {/* Summary Totals */}
@@ -563,6 +600,8 @@ export default function BusinessDebtList() {
             <input 
               className="w-full bg-transparent border-none p-3 text-sm focus:ring-0" 
               placeholder="Search debts..." 
+              value={searchTerm}
+              onChange={event => setSearchTerm(event.target.value)}
             />
          </div>
          <button onClick={handleAddClick} className="w-12 h-12 bg-gray-900 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-90 transition-all">
@@ -570,9 +609,9 @@ export default function BusinessDebtList() {
          </button>
       </div>
 
-      {loading && debts.length === 0 ? (
+      {loading && filteredDebts.length === 0 ? (
         <div className="py-20 text-center text-gray-400">Loading debts...</div>
-      ) : debts.length === 0 ? (
+      ) : filteredDebts.length === 0 ? (
         <div className="bg-white rounded-3xl p-10 text-center border border-gray-100 shadow-sm">
            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6">
               <CreditCard size={32} />
@@ -583,7 +622,7 @@ export default function BusinessDebtList() {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-            {debts.map((d) => {
+            {filteredDebts.map((d) => {
                const recurrence = parseLenderRecurrence(d.lender);
                return (
                   <div key={d.id} className={`bg-white p-5 rounded-3xl border border-gray-50 flex flex-col gap-2 shadow-sm transition-opacity ${d.status === 'paid' ? 'opacity-70' : 'opacity-100'}`}>

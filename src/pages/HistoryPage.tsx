@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Trash2, Edit2, Check, X, CheckCircle2, AlertCircle, 
   ChevronDown, ChevronUp, RotateCw, FileText, Search, Calendar, 
-  ArrowUpDown, Filter, SlidersHorizontal, RefreshCw
+  ArrowUpDown, Filter, SlidersHorizontal, RefreshCw, Share2
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchTransactions, deleteTransaction, updateTransaction, moveToTrash } from '../services/db';
@@ -11,6 +11,8 @@ import { formatCurrency } from '../lib/currency';
 import { parsePersonalDebt, serializePersonalDebt, getCleanNote, generateRecurringPayments, RecurringPaymentInstance } from '../lib/debt';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import CsvImportModal from '../components/CsvImportModal';
+import { shareExpenseHistory } from '../lib/shareExpenseHistory';
+import { useAppResume } from '../hooks/useAppResume';
 
 export default function HistoryPage() {
   const { type: urlType } = useParams<{ type: string }>();
@@ -73,6 +75,8 @@ export default function HistoryPage() {
     }
     setLoading(false);
   };
+
+  useAppResume(loadData);
 
   useEffect(() => {
     loadData();
@@ -299,12 +303,35 @@ export default function HistoryPage() {
 
   const isFiltered = searchQuery.trim() !== '' || datePreset !== 'all' || activeType !== 'all' || startDate !== '' || endDate !== '';
 
+  const handleShareHistory = async () => {
+    try {
+      const rows = filteredTransactions.map(tx => {
+        const isDebt = tx.type === 'debt';
+        const debtMeta = isDebt ? parsePersonalDebt(tx) : null;
+        return {
+          date: tx.date,
+          type: tx.type,
+          category: tx.category,
+          note: getCleanNote(tx, debtMeta),
+          amount: Number(tx.amount),
+          currency: currencyCode,
+        };
+      });
+      await shareExpenseHistory(rows, `youfi-${activeType}-history.csv`, `${activeType} transaction history`);
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        console.error('Could not share transaction history:', error);
+        window.alert(error instanceof Error ? error.message : 'Could not share transaction history.');
+      }
+    }
+  };
+
   return (
     <div className="flex flex-col tracking-tight pt-4 pb-20">
       {/* Top Bar Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <button 
+          <button
             onClick={() => navigate(-1)} 
             className="w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-gray-700 shadow-xs transition-transform active:scale-95"
           >
@@ -315,12 +342,21 @@ export default function HistoryPage() {
             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Searchable Records & Analysis</p>
           </div>
         </div>
-        <button 
-          onClick={() => setShowCsvImport(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-brand-50 text-brand-600 rounded-xl text-xs font-bold border border-brand-100 active:scale-95 transition-transform hover:bg-brand-100"
-        >
-          <FileText size={14} /> Import CSV
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void handleShareHistory()}
+            disabled={filteredTransactions.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-100 active:scale-95 transition-transform hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Share2 size={14} /> Share
+          </button>
+          <button
+            onClick={() => setShowCsvImport(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-brand-50 text-brand-600 rounded-xl text-xs font-bold border border-brand-100 active:scale-95 transition-transform hover:bg-brand-100"
+          >
+            <FileText size={14} /> Import CSV
+          </button>
+        </div>
       </div>
 
       {/* Primary Category Selector Tabs */}

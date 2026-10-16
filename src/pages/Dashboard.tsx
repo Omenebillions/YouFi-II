@@ -17,6 +17,7 @@ import { checkUpcomingPaymentNotifications } from '../lib/notifications';
 import { parsePersonalDebt, getCleanNote } from '../lib/debt';
 import { parseBusinessName, serializeBusinessTxCategory } from '../lib/business';
 import { parseIncomeCategory, parseExpensePlanCategory, isIncomeBudget } from '../lib/expensesPlanner';
+import { useAppResume } from '../hooks/useAppResume';
 
 import NotificationCenter from '../components/NotificationCenter';
 
@@ -55,39 +56,41 @@ export default function Dashboard() {
         supabase.from('living_expenses').select('*').eq('user_id', user.id)
       ]);
 
-      const loadedTransactions = txList.status === 'fulfilled' ? (txList.value || []) : [];
-      const loadedBusinesses = bizRes.status === 'fulfilled' ? (bizRes.value.data || []) : [];
-      const loadedUpcoming = upcomingRes.status === 'fulfilled' ? (upcomingRes.value.data || []) : [];
-      const loadedBudgets = budgetList.status === 'fulfilled' ? (budgetList.value || []) : [];
-      const loadedLiving = livingRes.status === 'fulfilled' ? (livingRes.value.data || []) : [];
+      if (txList.status === 'rejected') console.error('Failed to load transactions for dashboard:', txList.reason);
+      if (bizRes.status === 'rejected') console.error('Failed to load businesses for dashboard:', bizRes.reason);
+      if (upcomingRes.status === 'rejected') console.error('Failed to load upcoming payments for dashboard:', upcomingRes.reason);
+      if (budgetList.status === 'rejected') console.error('Failed to load budgets for dashboard:', budgetList.reason);
+      if (livingRes.status === 'rejected') console.error('Failed to load living expenses for dashboard:', livingRes.reason);
 
-      setTransactions(loadedTransactions);
-      processChartData(loadedTransactions);
-
-      setBusinesses(loadedBusinesses.map((b: any) => {
-        const meta = parseBusinessName(b.name);
-        return {
-          ...b,
-          name: meta.name || b.name,
-          category: meta.category || b.category || 'General Business',
-          description: meta.description || b.description || ''
-        };
-      }));
-
-      const personal = loadedUpcoming.filter((p: any) => !p.business_id && !(p.title && p.title.startsWith('[Biz:')));
-      setUpcomingPayments(personal);
-      checkUpcomingPaymentNotifications(personal);
-
-      if (loadedBudgets.length > 0) {
-        setPlannerBudgets(loadedBudgets);
-      } else {
-        setPlannerBudgets([]);
+      if (txList.status === 'fulfilled') {
+        setTransactions(txList.value || []);
+        processChartData(txList.value || []);
       }
-
-      if (loadedLiving.length > 0) {
-        setLivingExpenses(loadedLiving);
-      } else {
-        setLivingExpenses([]);
+      if (bizRes.status === 'fulfilled' && !bizRes.value.error) {
+        setBusinesses((bizRes.value.data || []).map((b: any) => {
+          const meta = parseBusinessName(b.name);
+          return {
+            ...b,
+            name: meta.name || b.name,
+            category: meta.category || b.category || 'General Business',
+            description: meta.description || b.description || ''
+          };
+        }));
+      } else if (bizRes.status === 'fulfilled') {
+        console.error('Failed to load businesses for dashboard:', bizRes.value.error);
+      }
+      if (upcomingRes.status === 'fulfilled' && !upcomingRes.value.error) {
+        const personal = (upcomingRes.value.data || []).filter((p: any) => !p.business_id && !(p.title && p.title.startsWith('[Biz:')));
+        setUpcomingPayments(personal);
+        checkUpcomingPaymentNotifications(personal);
+      } else if (upcomingRes.status === 'fulfilled') {
+        console.error('Failed to load upcoming payments for dashboard:', upcomingRes.value.error);
+      }
+      if (budgetList.status === 'fulfilled') setPlannerBudgets(budgetList.value || []);
+      if (livingRes.status === 'fulfilled' && !livingRes.value.error) {
+        setLivingExpenses(livingRes.value.data || []);
+      } else if (livingRes.status === 'fulfilled') {
+        console.error('Failed to load living expenses for dashboard:', livingRes.value.error);
       }
     } catch (err) {
       console.warn("Dashboard fetchAllData warning, using offline fallback data:", err);
@@ -95,11 +98,15 @@ export default function Dashboard() {
         const fallbackTxs = await fetchTransactions(user.id);
         setTransactions(fallbackTxs);
         processChartData(fallbackTxs);
-      } catch (offlineErr) {}
+      } catch (offlineErr) {
+        console.error('Failed to load offline transaction fallback:', offlineErr);
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  useAppResume(fetchAllData);
   
   useEffect(() => {
     if (!user) return;
@@ -611,8 +618,8 @@ export default function Dashboard() {
                 </div>
              </div>
              
-             <div className="h-[250px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
+             <div className="h-[250px] w-full min-w-0">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 320, height: 250 }}>
                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <XAxis 
                          dataKey="date" 

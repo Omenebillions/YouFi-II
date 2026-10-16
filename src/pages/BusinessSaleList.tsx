@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, Trash2, 
   ShoppingBag, Search, Calendar,
-  TrendingUp, TrendingDown, Edit2, X
+  TrendingUp, TrendingDown, Edit2, X, Share2
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { moveToTrash } from '../services/db';
@@ -11,8 +11,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import { ModalTracker } from '../components/ModalTracker';
+import { useAppResume } from '../hooks/useAppResume';
 
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
+import { shareExpenseHistory } from '../lib/shareExpenseHistory';
 
 export default function BusinessSaleList() {
   const { businessId } = useParams();
@@ -55,13 +57,20 @@ export default function BusinessSaleList() {
     if (!businessId || !user) return;
     setLoading(true);
     try {
-      const { data: salesData } = await supabase.from('sales')
-        .select('*')
-        .eq('business_id', businessId)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (salesData) setSales(salesData);
+      const allSales: any[] = [];
+      const pageSize = 1000;
+      for (let offset = 0; ; offset += pageSize) {
+        const { data: salesPage, error: salesError } = await supabase.from('sales')
+          .select('*')
+          .eq('business_id', businessId)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .range(offset, offset + pageSize - 1);
+        if (salesError) throw salesError;
+        allSales.push(...(salesPage || []));
+        if (!salesPage || salesPage.length < pageSize) break;
+      }
+      setSales(allSales);
 
       const { data: prodData } = await supabase.from('products')
         .select('*')
@@ -74,6 +83,8 @@ export default function BusinessSaleList() {
       setLoading(false);
     }
   };
+
+  useAppResume(fetchSalesAndProducts);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -260,6 +271,24 @@ export default function BusinessSaleList() {
 
   const searchTotal = filteredSales.reduce((acc, s) => acc + (s.total_price || 0), 0);
 
+  const handleShareSales = async () => {
+    try {
+      await shareExpenseHistory(filteredSales.map(s => ({
+        date: s.date,
+        type: 'sale',
+        category: s.product_name || 'Item',
+        note: `${s.quantity} unit(s); profit: ${s.profit ?? 0}`,
+        amount: Number(s.total_price) || 0,
+        currency: currencyCode,
+      })), 'youfi-business-sales-history.csv', 'Business sales history');
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        console.error('Could not share business sales history:', error);
+        window.alert(error instanceof Error ? error.message : 'Could not share business sales history.');
+      }
+    }
+  };
+
   return (
     <div className="flex flex-col tracking-tight pt-4 pb-24">
       {/* Header */}
@@ -333,7 +362,14 @@ export default function BusinessSaleList() {
          </div>
       </div>
 
-      <div className="flex justify-end mb-6">
+      <div className="flex justify-between mb-6">
+         <button
+           onClick={() => void handleShareSales()}
+           disabled={filteredSales.length === 0}
+           className="flex items-center gap-2 px-4 py-3 bg-emerald-50 text-emerald-700 rounded-2xl text-xs font-bold border border-emerald-100 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+         >
+            <Share2 size={16} /> Share sales
+         </button>
          <button onClick={handleAddClick} className="w-12 h-12 bg-gray-900 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-90 transition-all">
             <Plus size={24} />
          </button>

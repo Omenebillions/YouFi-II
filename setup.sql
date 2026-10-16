@@ -13,22 +13,24 @@ CREATE TABLE IF NOT EXISTS public.users (
 
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can only access their own data" ON public.users;
 CREATE POLICY "Users can only access their own data" 
   ON public.users FOR ALL 
   USING (auth.uid() = id);
 
 
 CREATE OR REPLACE FUNCTION public.has_full_access(user_uuid UUID)
-RETURNS BOOLEAN AS $$
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS $$
 DECLARE
-  v_created_at TIMESTAMP WITH TIME ZONE;
   v_sub_status TEXT;
   v_sub_expires TIMESTAMP WITH TIME ZONE;
 BEGIN
-  -- Check user creation date for 30-day trial
-  SELECT created_at INTO v_created_at FROM public.users WHERE id = user_uuid;
-  IF v_created_at IS NOT NULL AND v_created_at + INTERVAL '30 days' > now() THEN
-    RETURN TRUE;
+  IF user_uuid IS DISTINCT FROM auth.uid() THEN
+    RETURN FALSE;
   END IF;
 
   -- Check active subscription
@@ -40,9 +42,30 @@ BEGIN
     RETURN TRUE;
   END IF;
 
+  IF EXISTS (
+    SELECT 1
+    FROM public.users AS u
+    JOIN auth.users AS auth_user ON auth_user.id = u.id
+    LEFT JOIN public.user_subscriptions AS s ON s.user_id = u.id
+    WHERE u.id = user_uuid
+      AND (
+        (s.user_id IS NULL AND auth_user.created_at + INTERVAL '30 days' > now())
+        OR (
+          s.status = 'payment_failed'
+          AND s.payment_failed_at IS NOT NULL
+          AND s.payment_grace_ends_at > now()
+        )
+      )
+  ) THEN
+    RETURN TRUE;
+  END IF;
+
   RETURN FALSE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE ALL ON FUNCTION public.has_full_access(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.has_full_access(uuid) TO authenticated;
 
 -- 2. Create Transactions table
 CREATE TABLE IF NOT EXISTS public.transactions (
@@ -59,19 +82,23 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own transactions" ON public.transactions;
 CREATE POLICY "Users can view their own transactions" 
    ON public.transactions FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own transactions" ON public.transactions;
 CREATE POLICY "Users can insert their own transactions" 
    ON public.transactions FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own transactions" ON public.transactions;
 CREATE POLICY "Users can update their own transactions" 
    ON public.transactions FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own transactions" ON public.transactions;
 CREATE POLICY "Users can delete their own transactions" 
    ON public.transactions FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -88,19 +115,23 @@ CREATE TABLE IF NOT EXISTS public.budgets (
 
 ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own budgets" ON public.budgets;
 CREATE POLICY "Users can view their own budgets" 
    ON public.budgets FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own budgets" ON public.budgets;
 CREATE POLICY "Users can insert their own budgets" 
    ON public.budgets FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own budgets" ON public.budgets;
 CREATE POLICY "Users can update their own budgets" 
    ON public.budgets FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own budgets" ON public.budgets;
 CREATE POLICY "Users can delete their own budgets" 
    ON public.budgets FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -120,19 +151,23 @@ CREATE TABLE IF NOT EXISTS public.savings_goals (
 
 ALTER TABLE public.savings_goals ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own savings_goals" ON public.savings_goals;
 CREATE POLICY "Users can view their own savings_goals" 
    ON public.savings_goals FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own savings_goals" ON public.savings_goals;
 CREATE POLICY "Users can insert their own savings_goals" 
    ON public.savings_goals FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own savings_goals" ON public.savings_goals;
 CREATE POLICY "Users can update their own savings_goals" 
    ON public.savings_goals FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own savings_goals" ON public.savings_goals;
 CREATE POLICY "Users can delete their own savings_goals" 
    ON public.savings_goals FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -153,19 +188,23 @@ CREATE TABLE IF NOT EXISTS public.financial_plans (
 
 ALTER TABLE public.financial_plans ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own financial_plans" ON public.financial_plans;
 CREATE POLICY "Users can view their own financial_plans" 
    ON public.financial_plans FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own financial_plans" ON public.financial_plans;
 CREATE POLICY "Users can insert their own financial_plans" 
    ON public.financial_plans FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own financial_plans" ON public.financial_plans;
 CREATE POLICY "Users can update their own financial_plans" 
    ON public.financial_plans FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own financial_plans" ON public.financial_plans;
 CREATE POLICY "Users can delete their own financial_plans" 
    ON public.financial_plans FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -182,19 +221,23 @@ CREATE TABLE IF NOT EXISTS public.trash (
 
 ALTER TABLE public.trash ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own trash" ON public.trash;
 CREATE POLICY "Users can view their own trash" 
    ON public.trash FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own trash" ON public.trash;
 CREATE POLICY "Users can insert their own trash" 
    ON public.trash FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own trash" ON public.trash;
 CREATE POLICY "Users can update their own trash" 
    ON public.trash FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own trash" ON public.trash;
 CREATE POLICY "Users can delete their own trash" 
    ON public.trash FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -210,19 +253,23 @@ CREATE TABLE IF NOT EXISTS public.businesses (
 
 ALTER TABLE public.businesses ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own businesses" ON public.businesses;
 CREATE POLICY "Users can view their own businesses" 
    ON public.businesses FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own businesses" ON public.businesses;
 CREATE POLICY "Users can insert their own businesses" 
    ON public.businesses FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own businesses" ON public.businesses;
 CREATE POLICY "Users can update their own businesses" 
    ON public.businesses FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own businesses" ON public.businesses;
 CREATE POLICY "Users can delete their own businesses" 
    ON public.businesses FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -243,19 +290,23 @@ CREATE TABLE IF NOT EXISTS public.business_transactions (
 
 ALTER TABLE public.business_transactions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own business_transactions" ON public.business_transactions;
 CREATE POLICY "Users can view their own business_transactions" 
    ON public.business_transactions FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own business_transactions" ON public.business_transactions;
 CREATE POLICY "Users can insert their own business_transactions" 
    ON public.business_transactions FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own business_transactions" ON public.business_transactions;
 CREATE POLICY "Users can update their own business_transactions" 
    ON public.business_transactions FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own business_transactions" ON public.business_transactions;
 CREATE POLICY "Users can delete their own business_transactions" 
    ON public.business_transactions FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -276,19 +327,23 @@ CREATE TABLE IF NOT EXISTS public.products (
 
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own products" ON public.products;
 CREATE POLICY "Users can view their own products" 
    ON public.products FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own products" ON public.products;
 CREATE POLICY "Users can insert their own products" 
    ON public.products FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own products" ON public.products;
 CREATE POLICY "Users can update their own products" 
    ON public.products FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own products" ON public.products;
 CREATE POLICY "Users can delete their own products" 
    ON public.products FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -310,19 +365,23 @@ CREATE TABLE IF NOT EXISTS public.sales (
 
 ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own sales" ON public.sales;
 CREATE POLICY "Users can view their own sales" 
    ON public.sales FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own sales" ON public.sales;
 CREATE POLICY "Users can insert their own sales" 
    ON public.sales FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own sales" ON public.sales;
 CREATE POLICY "Users can update their own sales" 
    ON public.sales FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own sales" ON public.sales;
 CREATE POLICY "Users can delete their own sales" 
    ON public.sales FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -341,19 +400,23 @@ CREATE TABLE IF NOT EXISTS public.business_debts (
 
 ALTER TABLE public.business_debts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own business_debts" ON public.business_debts;
 CREATE POLICY "Users can view their own business_debts" 
    ON public.business_debts FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own business_debts" ON public.business_debts;
 CREATE POLICY "Users can insert their own business_debts" 
    ON public.business_debts FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own business_debts" ON public.business_debts;
 CREATE POLICY "Users can update their own business_debts" 
    ON public.business_debts FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own business_debts" ON public.business_debts;
 CREATE POLICY "Users can delete their own business_debts" 
    ON public.business_debts FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -370,19 +433,23 @@ CREATE TABLE IF NOT EXISTS public.business_ideas (
 
 ALTER TABLE public.business_ideas ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own business_ideas" ON public.business_ideas;
 CREATE POLICY "Users can view their own business_ideas" 
    ON public.business_ideas FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own business_ideas" ON public.business_ideas;
 CREATE POLICY "Users can insert their own business_ideas" 
    ON public.business_ideas FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own business_ideas" ON public.business_ideas;
 CREATE POLICY "Users can update their own business_ideas" 
    ON public.business_ideas FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own business_ideas" ON public.business_ideas;
 CREATE POLICY "Users can delete their own business_ideas" 
    ON public.business_ideas FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -403,19 +470,23 @@ CREATE TABLE IF NOT EXISTS public.upcoming_payments (
 
 ALTER TABLE public.upcoming_payments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own upcoming_payments" ON public.upcoming_payments;
 CREATE POLICY "Users can view their own upcoming_payments" 
    ON public.upcoming_payments FOR SELECT 
    USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own upcoming_payments" ON public.upcoming_payments;
 CREATE POLICY "Users can insert their own upcoming_payments" 
    ON public.upcoming_payments FOR INSERT 
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can update their own upcoming_payments" ON public.upcoming_payments;
 CREATE POLICY "Users can update their own upcoming_payments" 
    ON public.upcoming_payments FOR UPDATE 
    USING (auth.uid() = user_id)
    WITH CHECK (auth.uid() = user_id AND public.has_full_access(auth.uid()));
 
+DROP POLICY IF EXISTS "Users can delete their own upcoming_payments" ON public.upcoming_payments;
 CREATE POLICY "Users can delete their own upcoming_payments" 
    ON public.upcoming_payments FOR DELETE 
    USING (auth.uid() = user_id AND public.has_full_access(auth.uid()));
@@ -430,10 +501,53 @@ CREATE TABLE IF NOT EXISTS public.user_subscriptions (
   original_transaction_id TEXT,
   expires_at TIMESTAMP WITH TIME ZONE,
   auto_renew BOOLEAN DEFAULT FALSE,
+  payment_failed_at TIMESTAMP WITH TIME ZONE,
+  payment_grace_ends_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+ALTER TABLE public.user_subscriptions
+  ADD COLUMN IF NOT EXISTS payment_failed_at TIMESTAMP WITH TIME ZONE,
+  ADD COLUMN IF NOT EXISTS payment_grace_ends_at TIMESTAMP WITH TIME ZONE;
+
+CREATE OR REPLACE FUNCTION public.set_subscription_payment_failure_timestamps()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog
+AS $$
+BEGIN
+  IF NEW.status = 'payment_failed' THEN
+    IF TG_OP = 'INSERT' THEN
+      NEW.payment_failed_at := now();
+      NEW.payment_grace_ends_at := now() + interval '7 days';
+    ELSIF OLD.status IS DISTINCT FROM 'payment_failed' THEN
+      NEW.payment_failed_at := now();
+      NEW.payment_grace_ends_at := now() + interval '7 days';
+    ELSE
+      NEW.payment_failed_at := coalesce(NEW.payment_failed_at, OLD.payment_failed_at, now());
+      NEW.payment_grace_ends_at := coalesce(
+        NEW.payment_grace_ends_at,
+        OLD.payment_grace_ends_at,
+        NEW.payment_failed_at + interval '7 days'
+      );
+    END IF;
+  ELSE
+    NEW.payment_failed_at := NULL;
+    NEW.payment_grace_ends_at := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS set_subscription_payment_failure_timestamps ON public.user_subscriptions;
+CREATE TRIGGER set_subscription_payment_failure_timestamps
+BEFORE INSERT OR UPDATE OF status, payment_failed_at, payment_grace_ends_at
+ON public.user_subscriptions
+FOR EACH ROW
+EXECUTE FUNCTION public.set_subscription_payment_failure_timestamps();
+
 ALTER TABLE public.user_subscriptions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view their own subscription" ON public.user_subscriptions;
 CREATE POLICY "Users can view their own subscription" 
    ON public.user_subscriptions FOR SELECT 
    USING (auth.uid() = user_id);
@@ -451,6 +565,7 @@ CREATE TABLE IF NOT EXISTS public.subscription_transactions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 ALTER TABLE public.subscription_transactions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view their own subscription transactions" ON public.subscription_transactions;
 CREATE POLICY "Users can view their own subscription transactions" 
    ON public.subscription_transactions FOR SELECT 
    USING (auth.uid() = user_id);
@@ -467,6 +582,7 @@ CREATE TABLE IF NOT EXISTS public.account_deletion_requests (
   verified_at TIMESTAMP WITH TIME ZONE
 );
 ALTER TABLE public.account_deletion_requests ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view their own deletion requests" ON public.account_deletion_requests;
 CREATE POLICY "Users can view their own deletion requests"
    ON public.account_deletion_requests FOR SELECT
    USING (auth.uid() = user_id);

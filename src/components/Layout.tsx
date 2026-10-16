@@ -25,7 +25,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const { businessId: businessIdParam } = useParams();
   
-  const { isPaywallOpen, paywallFeatureName, hidePaywall, isReadOnly, isTrial, trialEndsAt, showPaywall } = usePremium();
+  const { isPaywallOpen, paywallFeatureName, hidePaywall, isReadOnly, isTrial, trialEndsAt, showPaywall, entitlement, refresh } = usePremium();
 
   // Custom hook-like behavior to extract businessId from pathname if not in params
   const businessIdMatch = location.pathname.match(/\/business\/([a-zA-Z0-9_-]+)/);
@@ -98,6 +98,14 @@ export default function Layout() {
         </div>
       )}
       <main className={`flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 ${isCoachPage ? 'pb-0' : isBusinessPage ? 'pb-8' : 'pb-[calc(8rem+env(safe-area-inset-bottom))]'} pt-4 relative z-0 hide-scrollbar`}>
+        {user && entitlement?.status === 'unavailable' && (
+          <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+            <p className="text-xs font-medium">Subscription status is unavailable. Editing and premium access are restricted until it can be verified.</p>
+            <button onClick={() => void refresh()} className="shrink-0 rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-bold hover:bg-amber-100">
+              Retry
+            </button>
+          </div>
+        )}
         <Outlet />
       </main>
       

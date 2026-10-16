@@ -36,58 +36,51 @@ export interface PremiumContextType {
 
 const PremiumContext = createContext<PremiumContextType | undefined>(undefined);
 
+const unavailableEntitlement: Entitlement = {
+  status: 'unavailable',
+  hasFullAccess: false,
+  canModify: false,
+  isTrial: false,
+  isActive: false,
+  isPaymentFailed: false,
+  isExpired: false,
+  previewOnly: true,
+};
+
 async function fetchEntitlement(userId: string): Promise<Entitlement> {
   try {
     const { data, error } = await supabase
       .rpc('get_user_entitlement', { p_user_id: userId })
       .single();
 
-    if (error || !data) {
-      return {
-        status: 'active',
-        hasFullAccess: true,
-        canModify: true,
-        isTrial: false,
-        isActive: true,
-        isPaymentFailed: false,
-        isExpired: false,
-        previewOnly: false,
-      };
+    if (error) {
+      console.error('Server entitlement check failed; access is restricted:', error);
+      return unavailableEntitlement;
+    }
+
+    if (!data) {
+      console.error('Server entitlement check returned no result; access is restricted.');
+      return unavailableEntitlement;
     }
 
     const d = data as any;
-    // Also fetch timestamps from the table (optional)
-    const { data: row } = await supabase
-      .from('user_entitlements')
-      .select('payment_failed_at, payment_grace_ends_at, subscription_ends_at, trial_ends_at')
-      .eq('user_id', userId)
-      .single();
-
     return {
-      status: d.status || 'active',
-      hasFullAccess: d.has_full_access ?? true,
-      canModify: d.can_modify_data ?? true,
-      isTrial: d.is_trial ?? false,
-      isActive: d.is_active ?? true,
-      isPaymentFailed: d.is_payment_failed ?? false,
-      isExpired: d.is_expired ?? false,
-      previewOnly: d.preview_only ?? false,
-      paymentFailedAt: row?.payment_failed_at,
-      paymentGraceEndsAt: row?.payment_grace_ends_at,
-      subscriptionEndsAt: row?.subscription_ends_at,
-      trialEndsAt: row?.trial_ends_at,
+      status: d.status ?? 'inactive',
+      hasFullAccess: d.has_full_access === true,
+      canModify: d.can_modify_data === true,
+      isTrial: d.is_trial === true,
+      isActive: d.is_active === true,
+      isPaymentFailed: d.is_payment_failed === true,
+      isExpired: d.is_expired === true,
+      previewOnly: d.preview_only === true,
+      paymentFailedAt: d.payment_failed_at ?? undefined,
+      paymentGraceEndsAt: d.payment_grace_ends_at ?? undefined,
+      subscriptionEndsAt: d.subscription_ends_at ?? undefined,
+      trialEndsAt: d.trial_ends_at ?? undefined,
     };
-  } catch (e) {
-    return {
-      status: 'active',
-      hasFullAccess: true,
-      canModify: true,
-      isTrial: false,
-      isActive: true,
-      isPaymentFailed: false,
-      isExpired: false,
-      previewOnly: false,
-    };
+  } catch (error) {
+    console.error('Server entitlement check failed; access is restricted:', error);
+    return unavailableEntitlement;
   }
 }
 
@@ -144,8 +137,8 @@ export const PremiumProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => window.removeEventListener('nativeEvent', handler);
   }, [refresh]);
 
-  const isPremium = entitlement ? entitlement.hasFullAccess : true;
-  const isReadOnly = entitlement ? entitlement.previewOnly : false;
+  const isPremium = entitlement?.hasFullAccess === true;
+  const isReadOnly = entitlement?.previewOnly ?? Boolean(user);
   const isTrial = entitlement ? entitlement.isTrial : false;
   const trialEndsAt = entitlement?.trialEndsAt;
 

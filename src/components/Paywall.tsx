@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Sparkles, Check, ShieldAlert, CreditCard, X, Loader2, RefreshCw } from 'lucide-react';
 import { useNativeBridge } from '../hooks/useNativeBridge';
 import { useAuth } from '../contexts/AuthContext';
+import { usePremium } from '../contexts/PremiumContext';
+import { supabase } from '../services/supabase';
 import { formatCurrency } from '../lib/currency';
 
 interface PaywallProps {
@@ -11,9 +13,22 @@ interface PaywallProps {
   onSuccess?: () => void;
 }
 
+async function edgeFunctionErrorMessage(error: unknown, fallback: string): Promise<string> {
+  if (error && typeof error === 'object' && 'context' in error && error.context instanceof Response) {
+    try {
+      const body = await error.context.clone().json() as { error?: unknown };
+      if (typeof body.error === 'string') return body.error;
+    } catch {
+      // Use the function client's error message if the response isn't JSON.
+    }
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export default function Paywall({ isOpen, onClose, featureName = "Premium Services", onSuccess }: PaywallProps) {
   const { isNative, bridge, refreshPremiumStatus } = useNativeBridge();
-  const { userProfile } = useAuth();
+  const { user, userProfile } = useAuth();
+  const { refreshPremiumStatus: refreshEntitlement } = usePremium();
   const [loading, setLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,28 +77,6 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
     }
   };
 
-  const getPaystackAmountAndCurrency = (plan: 'pro_monthly' | 'pro_yearly' | 'biz_monthly' | 'biz_yearly') => {
-    if (currencyCode === 'NGN') {
-      switch (plan) {
-        case 'pro_monthly': return { amount: 2500, currency: 'NGN' };
-        case 'pro_yearly': return { amount: 20000, currency: 'NGN' };
-        case 'biz_monthly': return { amount: 7000, currency: 'NGN' };
-        case 'biz_yearly': return { amount: 60000, currency: 'NGN' };
-      }
-    }
-    const usdPrices = {
-      pro_monthly: 4.99,
-      pro_yearly: 39.99,
-      biz_monthly: 12.99,
-      biz_yearly: 99.99
-    };
-    const usdPrice = usdPrices[plan];
-    if (currencyCode === 'GHS' || currencyCode === 'KES' || currencyCode === 'ZAR') {
-      return { amount: Math.round(usdPrice * exchangeRate * 100) / 100, currency: currencyCode };
-    }
-    return { amount: usdPrice, currency: 'USD' };
-  };
-
   const loadPaystackPop = async (): Promise<any> => {
     return new Promise((resolve, reject) => {
       if ((window as any).PaystackPop) {
@@ -108,63 +101,102 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
     setError(null);
     setSuccessMsg(null);
     try {
+      if (!user) {
+        throw new Error("Sign in to your YouFi account before starting checkout.");
+      }
       const PaystackPop = await loadPaystackPop();
       if (!PaystackPop) {
         throw new Error("Paystack SDK could not be loaded.");
       }
 
-      const { amount, currency } = getPaystackAmountAndCurrency(plan);
       const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
       if (!publicKey) {
         throw new Error("VITE_PAYSTACK_PUBLIC_KEY is not configured on this workspace. Please add it to live variables.");
       }
-      
-      const email = userProfile?.email || 'customer@youfi.app';
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session?.access_token) {
+        throw new Error("Your sign-in session could not be verified. Please sign in again.");
+      }
+
+      const currency = ['NGN', 'GHS', 'KES', 'ZAR'].includes(currencyCode) ? currencyCode : 'USD';
+      const { data: initializeData, error: initializeError } = await supabase.functions.invoke(
+        'paystack-initialize',
+        { body: { planId: plan, currency } },
+      );
+      if (initializeError) {
+        throw new Error(await edgeFunctionErrorMessage(initializeError, "Could not prepare your Paystack checkout."));
+      }
+      const checkout = initializeData as {
+        reference?: string;
+        amount?: number;
+        currency?: string;
+        error?: string;
+      } | null;
+      if (checkout?.error) {
+        throw new Error(checkout.error);
+      }
+      if (
+        typeof checkout?.reference !== 'string' ||
+        typeof checkout.amount !== 'number' ||
+        typeof checkout.currency !== 'string'
+      ) {
+        throw new Error("The payment service returned an invalid checkout response.");
+      }
+      const initializeResponse = {
+        reference: checkout.reference,
+        amount: checkout.amount,
+        currency: checkout.currency,
+      };
+
+      const email = user.email || userProfile?.email;
+      if (!email) {
+        throw new Error("Your account does not have an email address for checkout.");
+      }
       const name = userProfile?.name || 'YouFi Customer';
       const planLabel = plan.replace('_', ' ').toUpperCase();
 
-      const handleVerification = (response: any) => {
+      const handleVerification = async (response: { reference: string }) => {
         setLoading(true);
-        fetch(`${import.meta.env.VITE_API_URL || ''}/api/paystack/verify`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            reference: response.reference,
-            userId: userProfile?.id
-          })
-        })
-        .then(async (verifyRes) => {
-          const verifyData = await verifyRes.json();
-          if (verifyRes.ok) {
-            await refreshPremiumStatus();
-            setSuccessMsg("Success! Premium has been activated via Paystack securely.");
-            if (onSuccess) onSuccess();
-            setTimeout(() => {
-              onClose();
-            }, 1500);
-          } else {
-            setError(verifyData.error || "Could not verify your Paystack charge.");
+        try {
+          const verificationSession = await supabase.auth.getSession();
+          if (verificationSession.error || !verificationSession.data.session?.access_token) {
+            throw new Error("Your session expired before the payment could be verified.");
           }
-        })
-        .catch((err) => {
-          console.error("Verification endpoint error:", err);
-          setError("Could not communicate with our backend to verify your license. Reference: " + response.reference);
-        })
-        .finally(() => {
+          const { data: verifyData, error: verifyError } = await supabase.functions.invoke(
+            'paystack-verify',
+            { body: { reference: response.reference } },
+          );
+          if (verifyError) {
+            throw new Error(await edgeFunctionErrorMessage(verifyError, "Could not verify your Paystack charge."));
+          }
+          if (verifyData?.error) {
+            throw new Error(verifyData.error);
+          }
+          if (verifyData?.success !== true) {
+            throw new Error("Paystack did not confirm a successful payment.");
+          }
+          await refreshEntitlement();
+          setSuccessMsg("Success! Premium has been activated via Paystack securely.");
+          onSuccess?.();
+          setTimeout(onClose, 1500);
+        } catch (verificationError) {
+          console.error("Paystack verification failed:", verificationError);
+          const message = verificationError instanceof Error ? verificationError.message : "Could not verify your Paystack charge.";
+          setError(`${message} Reference: ${response.reference}`);
+        } finally {
           setLoading(false);
-        });
+        }
       };
 
+      let isVerifying = false;
       const handler = PaystackPop.setup({
         key: publicKey,
         email: email,
-        amount: Math.round(amount * 100), // convert to subunit (kobo / cents / pesewas)
-        currency: currency,
-        ref: 'youfi_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now(),
+        amount: initializeResponse.amount,
+        currency: initializeResponse.currency,
+        ref: initializeResponse.reference,
         metadata: {
-          userId: userProfile?.id,
+          userId: user.id,
           custom_fields: [
             {
               display_name: "Customer Name",
@@ -179,13 +211,14 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
           ]
         },
         callback: function(response: any) {
-          handleVerification(response);
+          isVerifying = true;
+          void handleVerification(response);
         },
         onClose: function() {
-          setLoading(false);
+          if (!isVerifying) setLoading(false);
         },
         onCancel: function() {
-          setLoading(false);
+          if (!isVerifying) setLoading(false);
         }
       });
 
@@ -256,8 +289,18 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
           setError("No pre-existing native purchases were found for this account.");
         }
       } else {
-        await refreshPremiumStatus();
-        setSuccessMsg("Restored! Your active web premium entitlements were successfully verified.");
+        if (!user) throw new Error("Sign in to restore purchases.");
+        const { data, error: entitlementError } = await supabase
+          .rpc('get_user_entitlement', { p_user_id: user.id })
+          .single();
+        if (entitlementError) throw entitlementError;
+        const entitlement = data as { has_full_access?: boolean } | null;
+        if (entitlement?.has_full_access !== true) {
+          setError("No active web premium subscription was found for this account.");
+          return;
+        }
+        await refreshEntitlement();
+        setSuccessMsg("Restored! Your active web premium entitlement was verified.");
         if (onSuccess) onSuccess();
       }
     } catch (err: any) {

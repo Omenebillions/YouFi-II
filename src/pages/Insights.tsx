@@ -257,8 +257,8 @@ export default function Insights() {
                 <p className="text-[11px] text-gray-400 font-medium">Trailing 6-month performance ({scope === 'all' ? 'Personal + SME' : scope})</p>
               </div>
             </div>
-            <div className="h-48 w-full">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-48 w-full min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 320, height: 192 }}>
                 <BarChart data={last6MonthsTrend} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                   <XAxis dataKey="monthName" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} dy={10} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value} />
@@ -426,8 +426,8 @@ export default function Insights() {
             <h2 className="text-gray-900 font-bold text-base w-full mb-6">Expense Category Breakdown</h2>
             
             {chartData.length > 0 ? (
-              <div className="w-full h-48 relative">
-                <ResponsiveContainer width="100%" height="100%">
+              <div className="w-full h-48 min-w-0 relative">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 320, height: 192 }}>
                   <PieChart>
                     <RechartsTooltip formatter={(val: any) => formatCurrency(val, currencyCode)} />
                     <Pie

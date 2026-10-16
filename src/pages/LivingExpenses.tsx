@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
 import { formatCurrency } from '../lib/currency';
-import { Plus, Trash2, Home, AlertCircle, ArrowLeft, HeartPulse, Target, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Home, AlertCircle, ArrowLeft, HeartPulse, Target, Edit2, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePrivacy } from '../contexts/PrivacyContext';
+import { shareExpenseHistory } from '../lib/shareExpenseHistory';
+import { useAppResume } from '../hooks/useAppResume';
 
 export default function LivingExpenses() {
   const { user, userProfile } = useAuth();
@@ -63,6 +65,8 @@ export default function LivingExpenses() {
       setLoading(false);
     }
   };
+
+  useAppResume(fetchData);
 
   const calculateMonthlyExpenses = () => {
     return expenses.reduce((acc, exp) => {
@@ -131,11 +135,32 @@ export default function LivingExpenses() {
   const currencyCode = userProfile?.currency || 'USD';
   const currencyString = (val: number) => formatCurrency(val, currencyCode, isPrivacyMode);
 
+  const handleShareExpenses = async () => {
+    try {
+      await shareExpenseHistory(
+        expenses.map(exp => ({
+          type: 'expense',
+          category: exp.name,
+          amount: Number(exp.amount),
+          currency: currencyCode,
+          frequency: exp.frequency,
+        })),
+        'youfi-living-expenses.csv',
+        'Living expenses',
+      );
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        console.error('Could not share living expenses:', error);
+        window.alert(error instanceof Error ? error.message : 'Could not share living expenses.');
+      }
+    }
+  };
+
   const deficit = monthlyLivingExpenses - configuredIncome;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
-      <div className="flex items-center gap-4 mb-8">
+      <div className="flex items-center justify-between gap-4 mb-8">
         <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-gray-700 shadow-sm border border-gray-100 hover:bg-gray-50 transition-colors">
           <ArrowLeft size={20} />
         </button>
@@ -143,6 +168,13 @@ export default function LivingExpenses() {
           <h1 className="text-xl font-bold text-gray-900">Living Expenses</h1>
           <p className="text-sm text-gray-500">Track and manage your baseline costs</p>
         </div>
+        <button
+          onClick={() => void handleShareExpenses()}
+          disabled={expenses.length === 0}
+          className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-100 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Share2 size={15} /> Share
+        </button>
       </div>
 
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-6">

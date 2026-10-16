@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, TrendingUp, TrendingDown,
-  Search, Calendar, Trash2, Edit2, X, AlertTriangle, Play, Sparkles
+  Search, Calendar, Trash2, Edit2, X, AlertTriangle, Play, Sparkles, Share2
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,8 +12,10 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveCont
 import { moveToTrash } from '../services/db';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import { ModalTracker } from '../components/ModalTracker';
+import { useAppResume } from '../hooks/useAppResume';
 import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 import { parseBusinessTxCategory, serializeBusinessTxCategory } from '../lib/business';
+import { shareExpenseHistory } from '../lib/shareExpenseHistory';
 
 export default function BusinessTransactionList() {
   const { businessId, type } = useParams(); // type: 'income' or 'expense'
@@ -54,6 +56,8 @@ export default function BusinessTransactionList() {
       }));
     }
   };
+
+  useAppResume(fetchTransactionsForUI);
   
   useEffect(() => {
     if (location.search.includes('add=true')) {
@@ -269,6 +273,25 @@ export default function BusinessTransactionList() {
      return matchesSearch && matchesDate;
   });
 
+  const handleShareHistory = async () => {
+    try {
+      const rows = filteredTransactions.map(tx => ({
+        date: tx.date,
+        type: tx.type,
+        category: tx.category,
+        note: tx.note,
+        amount: Number(tx.amount),
+        currency: currencyCode,
+      }));
+      await shareExpenseHistory(rows, `youfi-business-${type}-history.csv`, title);
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        console.error('Could not share business transaction history:', error);
+        window.alert(error instanceof Error ? error.message : 'Could not share business transaction history.');
+      }
+    }
+  };
+
   const getChartData = () => {
     const chartMap: Record<string, any> = {};
     filteredTransactions.forEach(tx => {
@@ -348,8 +371,8 @@ export default function BusinessTransactionList() {
       {chartData.length > 0 && (
          <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm mb-6">
             <h3 className="text-sm font-bold text-gray-900 mb-6">Trends (Monthly)</h3>
-            <div className="h-48 w-full">
-               <ResponsiveContainer width="100%" height="100%">
+            <div className="h-48 w-full min-w-0">
+               <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 320, height: 192 }}>
                   <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} dy={10} />
                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value} />
@@ -404,7 +427,14 @@ export default function BusinessTransactionList() {
          </div>
       </div>
 
-      <div className="flex justify-end mb-6">
+      <div className="flex justify-between mb-6">
+         <button
+          onClick={() => void handleShareHistory()}
+          disabled={filteredTransactions.length === 0}
+          className="flex items-center gap-2 px-4 py-3 bg-emerald-50 text-emerald-700 rounded-2xl text-xs font-bold border border-emerald-100 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+         >
+           <Share2 size={16} /> Share history
+         </button>
          <button onClick={handleAddClick} className="w-12 h-12 bg-gray-900 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-90 transition-all">
             <Plus size={24} />
          </button>

@@ -16,6 +16,7 @@ import { formatCurrency as formatCurrencyGlobal } from '../lib/currency';
 import NotificationCenter from '../components/NotificationCenter';
 import { ModalTracker } from '../components/ModalTracker';
 import BusinessInvoices from '../components/BusinessInvoices';
+import { useAppResume } from '../hooks/useAppResume';
 
 export default function BusinessDashboard() {
   const { businessId } = useParams();
@@ -132,6 +133,8 @@ export default function BusinessDashboard() {
       if (showLoader) setLoading(false);
     }
   }, [businessId, user]);
+
+  useAppResume(() => fetchData());
 
   useEffect(() => {
     if (!businessId || !user) return;
@@ -567,8 +570,8 @@ export default function BusinessDashboard() {
       {stats.chartData.length > 0 && (
          <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm mb-8">
             <h3 className="text-sm font-bold text-gray-900 mb-6">Income vs Expenses (Monthly)</h3>
-            <div className="h-48 w-full">
-               <ResponsiveContainer width="100%" height="100%">
+            <div className="h-48 w-full min-w-0">
+               <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 320, height: 192 }}>
                   <BarChart data={stats.chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} dy={10} />
                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value} />
