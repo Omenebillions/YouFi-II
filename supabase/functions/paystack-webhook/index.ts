@@ -1,5 +1,6 @@
 import {
   corsHeaders,
+  getPaystackConfig,
   jsonResponse,
   verifyAndActivatePayment,
 } from "../_shared/paystack.ts";
@@ -32,9 +33,11 @@ Deno.serve(async (request: Request) => {
   }
 
   try {
-    const secretKey = Deno.env.get("PAYSTACK_SECRET_KEY");
-    if (!secretKey) {
-      console.error("[Paystack webhook]: PAYSTACK_SECRET_KEY is not configured.");
+    let secretKey: string;
+    try {
+      ({ secretKey } = getPaystackConfig());
+    } catch (error) {
+      console.error("[Paystack webhook]:", error);
       return jsonResponse({ error: "Webhook verification is not configured." }, 503);
     }
 

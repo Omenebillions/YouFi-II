@@ -1,4 +1,4 @@
-import { createAdminClient, corsHeaders, getAuthenticatedUser, jsonResponse } from "../_shared/paystack.ts";
+import { createAdminClient, corsHeaders, getAuthenticatedUser, getPaystackConfig, jsonResponse } from "../_shared/paystack.ts";
 
 const plans = {
   pro_monthly: { usd: 4.99, ngn: 2500 },
@@ -15,6 +15,14 @@ Deno.serve(async (request: Request) => {
   }
   if (request.method !== "POST") {
     return jsonResponse({ error: "Method not allowed." }, 405);
+  }
+
+  let paystackMode: "live" | "test";
+  try {
+    ({ mode: paystackMode } = getPaystackConfig());
+  } catch (error) {
+    console.error("[Paystack]:", error);
+    return jsonResponse({ error: "Paystack is not configured. Set a valid PAYSTACK_SECRET_KEY in Supabase Edge Function secrets." }, 503);
   }
 
   try {
@@ -73,7 +81,7 @@ Deno.serve(async (request: Request) => {
       return jsonResponse({ error: "Could not prepare your payment. Please try again." }, 500);
     }
 
-    return jsonResponse({ reference, amount, currency });
+    return jsonResponse({ reference, amount, currency, mode: paystackMode });
   } catch (error) {
     console.error("[Paystack]: Payment initialization failed:", error);
     return jsonResponse({ error: "Could not prepare your payment. Please try again." }, 500);

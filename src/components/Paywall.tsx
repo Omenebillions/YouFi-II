@@ -111,7 +111,11 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
 
       const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
       if (!publicKey) {
-        throw new Error("VITE_PAYSTACK_PUBLIC_KEY is not configured on this workspace. Please add it to live variables.");
+        throw new Error("Paystack checkout is not configured for this app build. Add VITE_PAYSTACK_PUBLIC_KEY to the deployment environment and redeploy.");
+      }
+      const publicKeyMode = publicKey.startsWith('pk_live_') ? 'live' : publicKey.startsWith('pk_test_') ? 'test' : null;
+      if (!publicKeyMode) {
+        throw new Error("The configured Paystack public key has an invalid format.");
       }
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !sessionData.session?.access_token) {
@@ -130,6 +134,7 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
         reference?: string;
         amount?: number;
         currency?: string;
+        mode?: 'live' | 'test';
         error?: string;
       } | null;
       if (checkout?.error) {
@@ -138,9 +143,13 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
       if (
         typeof checkout?.reference !== 'string' ||
         typeof checkout.amount !== 'number' ||
-        typeof checkout.currency !== 'string'
+        typeof checkout.currency !== 'string' ||
+        (checkout.mode !== 'live' && checkout.mode !== 'test')
       ) {
         throw new Error("The payment service returned an invalid checkout response.");
+      }
+      if (checkout.mode !== publicKeyMode) {
+        throw new Error(`Paystack key mismatch: the app is using a ${publicKeyMode} public key, but Supabase is configured for ${checkout.mode} payments. Configure matching Paystack keys and redeploy.`);
       }
       const initializeResponse = {
         reference: checkout.reference,

@@ -17,14 +17,15 @@ The Paystack secret key must only be configured in Supabase Edge Function secret
 2. Connect the repository to Vercel.
 3. Add the environment variables listed above in the Vercel project settings.
 4. Apply the database migrations with `supabase db push`.
-5. Deploy the authenticated payment functions:
+5. Set the live Paystack secret key in the linked Supabase project and deploy the authenticated payment functions:
 
    ```sh
+   supabase secrets set PAYSTACK_SECRET_KEY=sk_live_your_secret_key
    supabase functions deploy paystack-initialize
    supabase functions deploy paystack-verify
    supabase functions deploy paystack-webhook --no-verify-jwt
-   supabase secrets set PAYSTACK_SECRET_KEY=your-live-paystack-secret-key
    ```
 
-6. In the Paystack dashboard, set the webhook URL to `https://<project-ref>.supabase.co/functions/v1/paystack-webhook`.
-7. Vercel will build and deploy the app. Confirm the Supabase Edge Functions are deployed and the Paystack public key is set before enabling live checkout.
+6. Set `VITE_PAYSTACK_PUBLIC_KEY` to the matching `pk_live_...` key in the Vercel production environment, then redeploy the app. The app checks that the public key and Supabase secret key are both live (or both test) before opening checkout.
+7. In the Paystack dashboard, set the webhook URL to `https://<project-ref>.supabase.co/functions/v1/paystack-webhook`.
+8. Complete a low-value live transaction and confirm the webhook activates the subscription. Do not use a test key for production payments.

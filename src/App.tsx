@@ -5,6 +5,7 @@
 
 import React, { useEffect, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PremiumProvider } from './contexts/PremiumContext';
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext';
@@ -120,7 +121,7 @@ export default function App() {
             <UIProvider>
             <PWAInstallPrompt />
             <Router>
-              
+              <Analytics />
               <AppInitializer />
               <Suspense fallback={
                 <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">

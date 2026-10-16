@@ -24,6 +24,13 @@ export function createAdminClient() {
   });
 }
 
+export function getPaystackConfig(): { secretKey: string; mode: "live" | "test" } {
+  const secretKey = Deno.env.get("PAYSTACK_SECRET_KEY");
+  if (secretKey?.startsWith("sk_live_")) return { secretKey, mode: "live" };
+  if (secretKey?.startsWith("sk_test_")) return { secretKey, mode: "test" };
+  throw new Error("PAYSTACK_SECRET_KEY is missing or has an invalid Paystack key format.");
+}
+
 export async function getAuthenticatedUser(request: Request) {
   const url = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")
@@ -44,8 +51,11 @@ export async function getAuthenticatedUser(request: Request) {
 }
 
 export async function verifyAndActivatePayment(reference: string, expectedUserId?: string) {
-  const secretKey = Deno.env.get("PAYSTACK_SECRET_KEY");
-  if (!secretKey) {
+  let secretKey: string;
+  try {
+    ({ secretKey } = getPaystackConfig());
+  } catch (error) {
+    console.error("[Paystack]:", error);
     return { error: "Paystack verification is not configured.", status: 503 };
   }
 
