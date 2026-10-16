@@ -8,8 +8,7 @@ interface AuthContextType {
   user: User | null;
   userProfile: any | null;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
-  signUpEmail: (email: string, pass: string, name: string) => Promise<void>;
+  signUpEmail: (email: string, pass: string, name: string) => Promise<boolean>;
   signInEmail: (email: string, pass: string) => Promise<void>;
   signInAsGuest: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -20,7 +19,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const getRedirectUrl = () => {
+const getAuthRedirectUrl = () => {
   return `${window.location.origin}/auth/callback`;
 };
 
@@ -37,28 +36,14 @@ const createLocalGuestUser = (email = 'guest@youfi.app', name = 'Guest User'): U
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  useEffect(() => {
-    // Handle OAuth popup callback on any route
-    if (window.opener && window.opener !== window) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-          try {
-            window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
-            window.close();
-          } catch (e) {
-            console.warn('Popup close warning:', e);
-          }
-        }
-      });
-    }
-  }, []);
-
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const currentUserIdRef = useRef<string | null>(null);
+  const authRequestIdRef = useRef(0);
 
   const handleAuthChange = async (currentUser: User | null) => {
+    const requestId = ++authRequestIdRef.current;
     if (!currentUser) {
       currentUserIdRef.current = null;
       setUser(null);
@@ -74,31 +59,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     currentUserIdRef.current = currentUser.id;
     setUser(currentUser);
 
+    const defaultProfile = {
+      id: currentUser.id,
+      email: currentUser.email || '',
+      name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'YouFi Member',
+      income: 0,
+      currency: 'USD'
+    };
+
+    let cachedProfile = null;
+    try {
+      const storedProfile = localStorage.getItem(`youfi_profile_${currentUser.id}`);
+      if (storedProfile) cachedProfile = JSON.parse(storedProfile);
+    } catch (error) {
+      console.warn('[AuthContext]: Could not read cached user profile:', error);
+    }
+    setUserProfile(cachedProfile || defaultProfile);
+    setLoading(false);
+
     try {
       let profile = await fetchUser(currentUser.id);
       if (!profile) {
-        // Check user-scoped stored profile in localStorage
-        const storedProfile = localStorage.getItem(`youfi_profile_${currentUser.id}`);
-        if (storedProfile) {
-          try {
-            profile = JSON.parse(storedProfile);
-          } catch (e) {}
-        }
-        
-        if (!profile) {
-          // Initialize default profile for first-time login
-          const data = {
-            email: currentUser.email || '',
-            name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'YouFi Member',
-            income: 0,
-            currency: 'USD'
-          };
-          await createUserProfile(currentUser.id, data).catch(() => {});
-          profile = { id: currentUser.id, ...data };
-        }
+        await createUserProfile(currentUser.id, defaultProfile).catch(error => {
+          console.warn('[AuthContext]: Could not initialize user profile:', error);
+        });
+        profile = cachedProfile || defaultProfile;
       }
 
-      if (profile && currentUserIdRef.current === currentUser.id) {
+      if (profile && authRequestIdRef.current === requestId && currentUserIdRef.current === currentUser.id) {
         setUserProfile(profile);
         try {
           localStorage.setItem(`youfi_profile_${currentUser.id}`, JSON.stringify(profile));
@@ -106,8 +94,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (error: any) {
       console.warn("[AuthContext]: Warning fetching user profile:", error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -158,32 +144,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return;
+      if (event === 'INITIAL_SESSION') return;
 
-      if (event === 'SIGNED_OUT' || !session?.user) {
-        await handleAuthChange(null);
-      } else if (session?.user) {
-        localStorage.removeItem('youfi_logged_out');
-        await handleAuthChange(session.user);
-      }
+      // Supabase holds an internal auth lock while notifying listeners. Defer
+      // profile/API work until after the synchronous listener has returned.
+      window.setTimeout(() => {
+        if (!isMounted) return;
+        if (event === 'SIGNED_OUT' || !session?.user) {
+          void handleAuthChange(null);
+        } else {
+          localStorage.removeItem('youfi_logged_out');
+          void handleAuthChange(session.user);
+        }
+      }, 0);
     });
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-          if (isMounted && session?.user) {
-            handleAuthChange(session.user);
-          }
-        });
-      }
-    };
-    window.addEventListener('message', handleMessage);
 
     return () => {
       isMounted = false;
       subscription.unsubscribe();
-      window.removeEventListener('message', handleMessage);
     };
   }, []);
 
@@ -221,54 +201,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signInWithGoogle = async () => {
-    const isIframe = window.self !== window.top;
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: getRedirectUrl(),
-        skipBrowserRedirect: isIframe
-      }
-    });
-
-    if (error) {
-      console.error("Google sign in error", error);
-      if (error.message && (error.message.toLowerCase().includes('url is not allowed') || error.message.toLowerCase().includes('restricted'))) {
-        alert(`SUPABASE CONFIGURATION REQUIRED:
-
-Google Sign-In is blocked because your current URL is not whitelisted in Supabase.
-
-Please go to your Supabase Dashboard -> Authentication -> URL Configuration -> Redirect URLs, and add exactly this URL:
-
-${window.location.origin}/auth/callback
-
-(e.g., https://youfi.vercel.app/auth/callback)`);
-      }
-      throw error;
-    }
-
-    if (isIframe && data?.url) {
-      const popup = window.open(data.url, 'google_oauth_popup', 'width=520,height=650,scrollbars=yes');
-      if (!popup) {
-        window.top!.location.href = data.url;
-      }
-    }
-  };
-
   const signUpEmail = async (email: string, pass: string, name: string) => {
     localStorage.removeItem('youfi_logged_out');
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password: pass,
       options: {
         data: {
           full_name: name
         },
-        emailRedirectTo: getRedirectUrl()
+        emailRedirectTo: getAuthRedirectUrl()
       }
     });
 
     if (error) throw error;
+    return !data.session;
   };
 
   const signInEmail = async (email: string, pass: string) => {
@@ -282,7 +229,7 @@ ${window.location.origin}/auth/callback
 
   const resetPassword = async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: getRedirectUrl(),
+      redirectTo: getAuthRedirectUrl(),
     });
     if (error) throw error;
   };
@@ -327,7 +274,7 @@ ${window.location.origin}/auth/callback
   };
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, signInWithGoogle, signUpEmail, signInEmail, signInAsGuest, resetPassword, logout, deleteAccount, refreshProfile }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, signUpEmail, signInEmail, signInAsGuest, resetPassword, logout, deleteAccount, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

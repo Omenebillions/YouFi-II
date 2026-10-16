@@ -44,7 +44,7 @@ export default function Terms() {
             2. Account Security & Verification
           </h2>
           <p className="text-xs text-gray-600 leading-relaxed font-normal">
-            To use key tools within YouFi, you must sign up using secure credentials or authorized external authentication (OAuth). You are entirely responsible for protecting your account keys and preventing unauthorized profile interaction. If any security loophole is compromised through direct negligence, YouFi shall not be held liable for resulting data loss.
+            To use key tools within YouFi, you must sign up using a valid email address and secure password. You are entirely responsible for protecting your account credentials and preventing unauthorized profile interaction. If any security loophole is compromised through direct negligence, YouFi shall not be held liable for resulting data loss.
           </p>
         </div>
 

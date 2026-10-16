@@ -223,18 +223,14 @@ export const updateTransaction = async (id: string, data: any) => {
 };
 
 export const fetchUser = async (userId: string) => {
-  try {
-    const { data, error } = await supabase
-      .from(tables.users)
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-      
-    if (error) throw error;
-    return data;
-  } catch (error) {
-    console.warn("Warning fetching user:", error);
-  }
+  const { data, error } = await supabase
+    .from(tables.users)
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
 };
 
 export const createUserProfile = async (userId: string, data: any) => {
@@ -708,5 +704,3 @@ export const clearLocalUserData = async (): Promise<void> => {
     console.warn("[Local Cleanup]: Warning clearing Cache Storage:", cacheErr);
   }
 };
-
-
