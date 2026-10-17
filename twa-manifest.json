@@ -1,0 +1,53 @@
+{
+  "packageId": "com.youfi.finance",
+  "host": "youfi.vercel.app",
+  "name": "YouFi - Personal & SME Financial Co-Pilot",
+  "launcherName": "YouFi",
+  "display": "standalone",
+  "themeColor": "#10b981",
+  "themeColorDark": "#10b981",
+  "navigationColor": "#10b981",
+  "navigationColorDark": "#10b981",
+  "navigationDividerColor": "#10b981",
+  "navigationDividerColorDark": "#10b981",
+  "backgroundColor": "#ffffff",
+  "enableNotifications": true,
+  "startUrl": "/?source=pwa",
+  "iconUrl": "https://youfi.vercel.app/pwa-512x512.png",
+  "maskableIconUrl": "https://youfi.vercel.app/pwa-512x512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": ".bubblewrap/youfi-upload-key.jks",
+    "alias": "youfi-upload"
+  },
+  "appVersion": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "shortName": "Dashboard",
+      "url": "/?source=pwa_shortcut",
+      "chosenIconUrl": "https://youfi.vercel.app/pwa-192x192.png"
+    },
+    {
+      "name": "Business & Invoices",
+      "shortName": "Invoices",
+      "url": "/business-invoices?source=pwa_shortcut",
+      "chosenIconUrl": "https://youfi.vercel.app/pwa-192x192.png"
+    }
+  ],
+  "webManifestUrl": "https://youfi.vercel.app/manifest.webmanifest",
+  "orientation": "portrait-primary",
+  "fingerprints": [
+    {
+      "name": "Play app signing key",
+      "value": "EF:F7:54:49:9F:C0:FC:48:75:09:45:63:48:B2:FF:08:1B:B8:41:D7:C8:94:BA:BC:26:DC:2E:CC:17:DB:11:D4"
+    }
+  ],
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "minSdkVersion": 23,
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}
