@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Check, HelpCircle, Sparkles, AlertCircle, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Check, HelpCircle, Sparkles, AlertCircle, ShieldCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNativeBridge } from '../hooks/useNativeBridge';
 import { formatCurrency } from '../lib/currency';
@@ -26,7 +27,8 @@ const faqs = [
 ];
 
 export default function Pricing() {
-  const { userProfile } = useAuth();
+  const navigate = useNavigate();
+  const { user, userProfile } = useAuth();
   const { isPremium, refreshPremiumStatus } = useNativeBridge();
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('yearly');
   const [paywallOpen, setPaywallOpen] = useState(false);
@@ -108,6 +110,21 @@ export default function Pricing() {
 
   return (
     <div className="flex flex-col gap-8 pb-12 animate-in fade-in duration-300">
+      <button
+        type="button"
+        onClick={() => {
+          const historyIndex = window.history.state?.idx;
+          if (typeof historyIndex === 'number' && historyIndex > 0) {
+            navigate(-1);
+          } else {
+            navigate(user ? '/' : '/login', { replace: true });
+          }
+        }}
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-100 bg-white text-gray-700 shadow-sm transition-transform active:scale-95"
+        aria-label="Go back"
+      >
+        <ArrowLeft size={20} />
+      </button>
       {/* Page Header */}
       <div className="relative text-center max-w-2xl mx-auto px-4 mt-4">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-50 border border-brand-100 rounded-full text-brand-600 text-xs font-bold mb-3 md:mb-4">

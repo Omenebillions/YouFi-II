@@ -6,6 +6,7 @@ import {
   ArrowUpDown, Filter, SlidersHorizontal, RefreshCw, Share2
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { usePremium } from '../contexts/PremiumContext';
 import { fetchTransactions, deleteTransaction, updateTransaction, moveToTrash } from '../services/db';
 import { formatCurrency } from '../lib/currency';
 import { parsePersonalDebt, serializePersonalDebt, getCleanNote, generateRecurringPayments, RecurringPaymentInstance } from '../lib/debt';
@@ -18,6 +19,7 @@ export default function HistoryPage() {
   const { type: urlType } = useParams<{ type: string }>();
   const navigate = useNavigate();
   const { user, userProfile } = useAuth();
+  const { entitlement, showPaywall } = usePremium();
   
   const [allTransactions, setAllTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +49,7 @@ export default function HistoryPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [txToDelete, setTxToDelete] = useState<any>(null);
   const [showCsvImport, setShowCsvImport] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ 
@@ -180,6 +183,35 @@ export default function HistoryPage() {
   const filteredMoneyOut = filteredExpenses;
   const filteredNetBalance = filteredMoneyIn - filteredMoneyOut;
 
+  const requireWriteAccess = () => {
+    if (entitlement?.canModify) return true;
+    showPaywall('Edit and manage transaction history');
+    return false;
+  };
+
+  const updateHistoryTransaction = async (id: string, data: any) => {
+    if (!requireWriteAccess()) return false;
+    setActionError(null);
+    try {
+      await updateTransaction(id, data);
+      return true;
+    } catch (error) {
+      const message = error && typeof error === 'object' && 'message' in error
+        ? String(error.message)
+        : '';
+      console.error('Could not update transaction history:', error);
+      if (/row-level security|rls policy/i.test(message)) {
+        setActionError(entitlement?.canModify
+          ? "We couldn't save this debt right now. Please refresh the page and try again. If the problem continues, contact support."
+          : "Your current plan doesn't include editing history. Choose a plan to make changes to this debt.");
+      } else {
+        setActionError("We couldn't save your changes. Please check your connection and try again.");
+      }
+      if (!entitlement?.canModify) showPaywall('Edit and manage transaction history');
+      return false;
+    }
+  };
+
   const handleDelete = async () => {
     if (!txToDelete) return;
     const tx = txToDelete;
@@ -191,6 +223,8 @@ export default function HistoryPage() {
   };
 
   const startEdit = (tx: any) => {
+    if (!requireWriteAccess()) return;
+    setActionError(null);
     setEditingId(tx.id);
     const isDebt = tx.type === 'debt';
     const debtMeta = isDebt ? parsePersonalDebt(tx) : null;
@@ -230,18 +264,21 @@ export default function HistoryPage() {
       payments: editForm.isRecurring ? editForm.payments : []
     }) : editForm.note;
 
-    await updateTransaction(id, {
+    const updated = await updateHistoryTransaction(id, {
       amount: parseFloat(editForm.amount),
       category: editForm.category,
       note: finalNote,
       date: editForm.date,
       type: editForm.type
     });
-    setEditingId(null);
-    loadData();
+    if (updated) {
+      setEditingId(null);
+      loadData();
+    }
   };
 
   const togglePersonalDebtStatus = async (tx: any) => {
+    if (!requireWriteAccess()) return;
     const debtMeta = parsePersonalDebt(tx);
     const newStatus = debtMeta.status === 'paid' ? 'unpaid' : 'paid';
     
@@ -255,14 +292,15 @@ export default function HistoryPage() {
       status: newStatus,
       payments: updatedPayments
     });
-    await updateTransaction(tx.id, {
+    const updated = await updateHistoryTransaction(tx.id, {
       ...tx,
       note: updatedNote
     });
-    loadData();
+    if (updated) loadData();
   };
 
   const handleTogglePaymentInstanceStatus = async (tx: any, instanceId: string) => {
+    if (!requireWriteAccess()) return;
     const isDebt = tx.type === 'debt';
     if (!isDebt) return;
     
@@ -285,12 +323,12 @@ export default function HistoryPage() {
       status: updatedStatus as any
     });
 
-    await updateTransaction(tx.id, {
+    const updated = await updateHistoryTransaction(tx.id, {
       ...tx,
       note: finalNote
     });
     
-    loadData();
+    if (updated) loadData();
   };
 
   const resetFilters = () => {
@@ -315,9 +353,10 @@ export default function HistoryPage() {
           note: getCleanNote(tx, debtMeta),
           amount: Number(tx.amount),
           currency: currencyCode,
+          frequency: tx.frequency,
         };
       });
-      await shareExpenseHistory(rows, `youfi-${activeType}-history.csv`, `${activeType} transaction history`);
+      await shareExpenseHistory(rows, `youfi-${activeType}-history.pdf`, `${activeType} transaction history`);
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         console.error('Could not share transaction history:', error);
@@ -358,6 +397,13 @@ export default function HistoryPage() {
           </button>
         </div>
       </div>
+
+      {actionError && (
+        <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          <AlertCircle size={18} className="mt-0.5 shrink-0" />
+          <span>{actionError}</span>
+        </div>
+      )}
 
       {/* Primary Category Selector Tabs */}
       <div className="flex bg-gray-100/80 p-1.5 rounded-2xl mb-6 gap-1 overflow-x-auto">
@@ -500,23 +546,30 @@ export default function HistoryPage() {
           </span>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center bg-gray-50/80 p-3.5 rounded-2xl border border-gray-100">
-          <div>
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Total In</p>
-            <p className="text-xs font-black text-emerald-600 mt-0.5">{formatCurrency(filteredMoneyIn, currencyCode)}</p>
+        {activeType === 'debt' ? (
+          <div className="text-center bg-amber-50/80 p-4 rounded-2xl border border-amber-100">
+            <p className="text-[9px] font-bold text-amber-700 uppercase tracking-wider">Debt Balance for Selected Period</p>
+            <p className="text-lg font-black text-amber-800 mt-1">{formatCurrency(filteredUnpaidDebts, currencyCode)}</p>
           </div>
-          <div>
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Total Out</p>
-            <p className="text-xs font-black text-rose-600 mt-0.5">{formatCurrency(filteredMoneyOut, currencyCode)}</p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2 text-center bg-gray-50/80 p-3.5 rounded-2xl border border-gray-100">
+            <div>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Total In</p>
+              <p className="text-xs font-black text-emerald-600 mt-0.5">{formatCurrency(filteredMoneyIn, currencyCode)}</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Total Out</p>
+              <p className="text-xs font-black text-rose-600 mt-0.5">{formatCurrency(filteredMoneyOut, currencyCode)}</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Net Total</p>
+              <p className={`text-xs font-black mt-0.5 ${filteredNetBalance < 0 ? 'text-red-500' : 'text-gray-900'}`}>
+                {formatCurrency(filteredNetBalance, currencyCode)}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Net Total</p>
-            <p className={`text-xs font-black mt-0.5 ${filteredNetBalance < 0 ? 'text-red-500' : 'text-gray-900'}`}>
-              {formatCurrency(filteredNetBalance, currencyCode)}
-            </p>
-          </div>
-        </div>
-        {filteredUnpaidDebts > 0 && (
+        )}
+        {activeType !== 'debt' && filteredUnpaidDebts > 0 && (
           <div className="mt-2.5 text-center text-[10px] font-bold text-amber-700 bg-amber-50/90 py-1.5 px-3 rounded-xl border border-amber-200/60 flex items-center justify-center gap-1.5">
             <AlertCircle size={12} className="text-amber-600 shrink-0" />
             <span>Active Debts Balance: {formatCurrency(filteredUnpaidDebts, currencyCode)} (tracked separately from expenses)</span>
@@ -818,15 +871,18 @@ export default function HistoryPage() {
                             <button 
                               type="button"
                               onClick={() => {
+                                if (!requireWriteAccess()) return;
                                 const parsedAmount = debtMeta.recurringAmount || tx.amount;
                                 const generated = generateRecurringPayments(debtMeta.repaymentDate || tx.date, debtMeta.frequency || 'monthly', debtMeta.duration || '3 months', parsedAmount);
-                                updateTransaction(tx.id, {
+                                void updateHistoryTransaction(tx.id, {
                                   ...tx,
                                   note: serializePersonalDebt({
                                     ...debtMeta,
                                     payments: generated
                                   })
-                                }).then(() => loadData());
+                                }).then(updated => {
+                                  if (updated) loadData();
+                                });
                               }}
                               className="text-xs font-bold text-brand-600 hover:underline"
                             >

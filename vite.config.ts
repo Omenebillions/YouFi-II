@@ -45,8 +45,8 @@ export default defineConfig(({mode}) => {
           related_applications: [
             {
               platform: 'play',
-              id: 'app.youfi.twa',
-              url: 'https://play.google.com/store/apps/details?id=app.youfi.twa'
+              id: 'com.youfi.finance',
+              url: 'https://play.google.com/store/apps/details?id=com.youfi.finance'
             }
           ],
           shortcuts: [

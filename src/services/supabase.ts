@@ -7,6 +7,8 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const isValidUrl = supabaseUrl && supabaseUrl.startsWith('https://') && !supabaseUrl.includes('your-project-url');
 const isValidKey = supabaseAnonKey && supabaseAnonKey !== 'your-anon-key' && supabaseAnonKey.length > 50;
 
+export const isSupabaseConfigured = Boolean(isValidUrl && isValidKey);
+
 if (!isValidUrl || !isValidKey) {
   console.warn('Supabase credentials missing or invalid. Please follow these steps:');
   console.warn('1. Create a project at https://supabase.com');
@@ -43,4 +45,3 @@ export const supabase = createClient(
     }
   }
 );
-

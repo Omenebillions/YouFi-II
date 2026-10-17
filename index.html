@@ -1,14 +1,6 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <script>
-      window.addEventListener('error', function(e) {
-        document.body.innerHTML += '<div style="position:fixed;top:0;left:0;z-index:9999;background:red;color:white;padding:20px;width:100%;font-size:16px;">ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno + '</div>';
-      });
-      window.addEventListener('unhandledrejection', function(e) {
-        document.body.innerHTML += '<div style="position:fixed;top:0;left:0;z-index:9999;background:red;color:white;padding:20px;width:100%;font-size:16px;">REJECTION: ' + (e.reason ? (e.reason.message || e.reason) : 'Unknown') + '</div>';
-      });
-    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -30,7 +22,7 @@
 
     <!-- App Store & Play Store Integration (ASO) -->
     <meta name="apple-itunes-app" content="app-id=1779452869, app-argument=https://youfi.app" />
-    <meta name="google-play-app" content="app-id=app.youfi.twa" />
+    <meta name="google-play-app" content="app-id=com.youfi.finance" />
 
     <script>
       // Capture beforeinstallprompt event at earliest possible instant
@@ -89,4 +81,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

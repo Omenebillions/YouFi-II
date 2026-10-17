@@ -3,7 +3,7 @@ import { Sparkles, Check, ShieldAlert, CreditCard, X, Loader2, RefreshCw } from 
 import { useNativeBridge } from '../hooks/useNativeBridge';
 import { useAuth } from '../contexts/AuthContext';
 import { usePremium } from '../contexts/PremiumContext';
-import { supabase } from '../services/supabase';
+import { isSupabaseConfigured, supabase } from '../services/supabase';
 import { formatCurrency } from '../lib/currency';
 
 interface PaywallProps {
@@ -13,7 +13,7 @@ interface PaywallProps {
   onSuccess?: () => void;
 }
 
-async function edgeFunctionErrorMessage(error: unknown, fallback: string): Promise<string> {
+async function edgeFunctionErrorMessage(error: unknown, functionName: string, fallback: string): Promise<string> {
   if (error && typeof error === 'object' && 'context' in error && error.context instanceof Response) {
     try {
       const body = await error.context.clone().json() as { error?: unknown };
@@ -21,6 +21,15 @@ async function edgeFunctionErrorMessage(error: unknown, fallback: string): Promi
     } catch {
       // Use the function client's error message if the response isn't JSON.
     }
+  }
+  if (
+    error &&
+    typeof error === 'object' &&
+    ('name' in error && error.name === 'FunctionsFetchError' ||
+      'message' in error && typeof error.message === 'string' &&
+        error.message.toLowerCase().includes('failed to send a request to the edge function'))
+  ) {
+    return `Could not reach the Supabase "${functionName}" Edge Function. Confirm VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in the app's production build, and that "${functionName}" is deployed to that same Supabase project. Redeploy the app after changing Vercel environment variables.`;
   }
   return error instanceof Error && error.message ? error.message : fallback;
 }
@@ -104,6 +113,9 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
       if (!user) {
         throw new Error("Sign in to your YouFi account before starting checkout.");
       }
+      if (!isSupabaseConfigured) {
+        throw new Error("Supabase is not configured in this app build. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in the production deployment, then rebuild and redeploy.");
+      }
       const PaystackPop = await loadPaystackPop();
       if (!PaystackPop) {
         throw new Error("Paystack SDK could not be loaded.");
@@ -128,7 +140,7 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
         { body: { planId: plan, currency } },
       );
       if (initializeError) {
-        throw new Error(await edgeFunctionErrorMessage(initializeError, "Could not prepare your Paystack checkout."));
+        throw new Error(await edgeFunctionErrorMessage(initializeError, 'paystack-initialize', "Could not prepare your Paystack checkout."));
       }
       const checkout = initializeData as {
         reference?: string;
@@ -176,7 +188,7 @@ export default function Paywall({ isOpen, onClose, featureName = "Premium Servic
             { body: { reference: response.reference } },
           );
           if (verifyError) {
-            throw new Error(await edgeFunctionErrorMessage(verifyError, "Could not verify your Paystack charge."));
+            throw new Error(await edgeFunctionErrorMessage(verifyError, 'paystack-verify', "Could not verify your Paystack charge."));
           }
           if (verifyData?.error) {
             throw new Error(verifyData.error);
